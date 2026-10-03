@@ -329,3 +329,12 @@ def test_separate_opinions_in_current_volumes():
     concurring = next(p for p in split.paragraphs if p.opinion == 1)
     assert concurring.text.startswith("I have gone through the draft judgment of my esteemed senior colleague")
     assert split.paragraph(concurring.ordinal - 1).text == "Ordered accordingly."
+
+
+def test_words_split_across_lines_are_rejoined():
+    text = " ".join(p.text for p in load("1951_1_266_276")[1].paragraphs)
+    assert "the Government drafted rules" in text  # printed "draft-" / "ed"
+    text = " ".join(p.text for p in load("1985_1_564_578")[1].paragraphs)
+    assert "is perpetuation of injustice" in text
+    text = " ".join(p.text for p in load("2022_2_925_960")[1].paragraphs)
+    assert "non-cognizable" in text and "noncognizable" not in text

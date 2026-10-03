@@ -25,6 +25,7 @@ real judgments these patterns were tuned on.
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 
 # Lines that are page furniture, not judgment text.
@@ -128,7 +129,8 @@ def _clean_author(name: str) -> str:
 
 
 class _Splitter:
-    def __init__(self) -> None:
+    def __init__(self, words: Counter[str]) -> None:
+        self.words = words  # the judgment's vocabulary, for line-break hyphens
         self.header: list[str] = []
         self.opinions: list[Opinion] = []
         self.paragraphs: list[Paragraph] = []
@@ -146,7 +148,7 @@ class _Splitter:
 
     def flush(self) -> None:
         blocks = [" ".join(b) for b in self.blocks if b]
-        text = "\n\n".join(_join_hyphens(b) for b in blocks).strip()
+        text = "\n\n".join(_join_hyphens(b, self.words) for b in blocks).strip()
         if text:
             if not self.opinions:
                 self.opinions.append(Opinion(0))
@@ -280,7 +282,7 @@ class _Splitter:
         self.flush()
         if not self.opinions:
             # No opinion markers anywhere: the whole text is one opinion.
-            fresh = _Splitter()
+            fresh = _Splitter(self.words)
             fresh.start_opinion([])
             for line in lines:
                 fresh.feed(line)
@@ -300,10 +302,63 @@ class _Splitter:
         return SplitJudgment(header, self.opinions, self.paragraphs, self.warnings)
 
 
-def _join_hyphens(text: str) -> str:
-    # "self- defence" from a line break becomes "self-defence". A word split
-    # across lines ("inter- est") keeps its hyphen; we cannot tell the two apart.
-    return re.sub(r"(\w)- (\w)", r"\1-\2", text)
+# Prefixes that keep their hyphen at a line break when the judgment gives no
+# evidence either way. "re" is not one: typesetters break "re-spondent".
+_HYPHEN_PREFIXES = frozenset("non self quasi cross counter ex co semi multi well ill".split())
+# Short words that join a compound chain ("case-by-case", "son-in-law").
+_CHAIN_WORDS = frozenset("by in of to and on".split())
+# Words that start one-word forms more often than compounds ("notwithstanding", "overruled").
+_JOINING_HEADS = frozenset("not per for any out with over under there where here".split())
+# Word endings that are never the second half of a compound.
+_SUFFIXES = frozenset("ing ed ly wise ment tion sion ness able ible ful ive ity ance ence".split())
+_LINE_BREAK_HYPHEN = re.compile(r"(?<![\w-])([\w-]*?)(\w+)- (\w[\w'’-]*)")
+_EDGE_PUNCTUATION = ".,;:!?\"'“”‘’()[]{}*"
+
+
+def _vocabulary(lines: list[str]) -> Counter[str]:
+    """Lower-cased words of the judgment, leaving out each line's last word
+    when it ends in a hyphen: that hyphen may only be a line break."""
+    words: Counter[str] = Counter()
+    for line in lines:
+        tokens = line.split()
+        if tokens and tokens[-1].endswith("-"):
+            tokens = tokens[:-1]
+        words.update(w for t in tokens if (w := t.strip(_EDGE_PUNCTUATION).lower()))
+    return words
+
+
+def _join_hyphens(text: str, words: Counter[str]) -> str:
+    """Rejoin words split across lines ("Govern- ment"), keeping the hyphen of
+    a real compound ("self- defence", "Munsif- Magistrate").
+
+    The judgment itself is the evidence: whichever of "government" and
+    "govern-ment" it uses elsewhere wins, first as the whole word
+    ("non-agri- cultural" against "non-agricultural") and then as the two
+    halves either side of the break. With no evidence, the hyphen stays after
+    a compound prefix, or between two words the judgment uses on their own
+    ("subject- matter"), and goes otherwise ("contri- buted").
+    """
+
+    def fix(m: re.Match[str]) -> str:
+        before, head, rest = m[1], m[2], m[3]
+        tail = rest.split("-")[0]
+        whole = rest.strip(_EDGE_PUNCTUATION)
+        if not tail[0].islower() or head[-1].isdigit():
+            keep = True  # "Munsif- Magistrate", "9- A"
+        elif (a := words[f"{before}{head}{whole}".lower()]) + (b := words[f"{before}{head}-{whole}".lower()]):
+            keep = b > a
+        elif (a := words[(head + tail).lower()]) + (b := words[f"{head}-{tail}".lower()]):
+            keep = b > a
+        elif tail.lower() in _SUFFIXES:
+            keep = False
+        else:
+            h, t = head.lower(), tail.lower()
+            both_words = len(h) > 2 and len(t) > 2 and words[h] > 0 and words[t] > 0 and h not in _JOINING_HEADS
+            chain = bool(before) and h in _CHAIN_WORDS
+            keep = h in _HYPHEN_PREFIXES or both_words or chain or ("-" in rest and not before)
+        return f"{before}{head}-{rest}" if keep else before + head + rest
+
+    return _LINE_BREAK_HYPHEN.sub(fix, text)
 
 
 def _join_lone_numbers(lines: list[str]) -> list[str]:
@@ -328,7 +383,7 @@ def _join_lone_numbers(lines: list[str]) -> list[str]:
 
 def split_judgment(text: str) -> SplitJudgment:
     lines = _join_lone_numbers(text.replace("\r\n", "\n").replace("\f", "\n").split("\n"))
-    splitter = _Splitter()
+    splitter = _Splitter(_vocabulary(lines))
     for line in lines:
         splitter.feed(line)
     return splitter.finish(lines)

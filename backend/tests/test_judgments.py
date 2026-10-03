@@ -209,3 +209,35 @@ def test_numbering_typos_and_lone_numbers():
         ("1", "Leave granted."),
         ("2", "The appeal is allowed."),
     ]
+
+
+def test_line_break_hyphens_use_the_judgment_as_evidence():
+    # "Govern- ment" is a line break: "Government" appears elsewhere. "Cross-
+    # examination" keeps its hyphen for the same reason.
+    text = (
+        "JUDGMENT\n\n1. The Government replied. The cross-examination was brief. The Govern-\n"
+        "ment relied on the cross-\nexamination of the witness.\n"
+    )
+    assert (
+        split_judgment(text)
+        .paragraph(1)
+        .text.endswith("The Government relied on the cross-examination of the witness.")
+    )
+
+
+def test_line_break_hyphens_without_evidence():
+    text = (
+        "JUDGMENT\n\n1. The matter contri-\nbuted to the delay. The subject-\nmatter of the suit, the "
+        "Munsif-\nMagistrate, the case-by-\ncase approach and the non-\ncognizable offence were "
+        "threaten-\ning nobody. Not one matter of subject was raised.\n"
+    )
+    para = split_judgment(text).paragraph(1).text
+    for expected in (
+        "contributed",  # no evidence, not a compound: a syllable break
+        "subject-matter",  # both halves are words the judgment uses
+        "Munsif-Magistrate",  # a capital after the break
+        "case-by-case",  # a link in a compound chain
+        "non-cognizable",  # a compound prefix
+        "threatening",  # a suffix
+    ):
+        assert expected in para, expected
