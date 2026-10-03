@@ -1,0 +1,77 @@
+# Name-resolution test set.
+#
+# This is the start of the Phase 5 test set. It covers only the cases in
+# data/seed_cases.yaml. Grow it with the 150 to 200 labelled cases, and turn
+# every user error report into a new entry.
+#
+# kind: popular | formal | citation | misspelling | ambiguous |
+#       trap_fake | trap_wrong_year | trap_bad_citation | trap_conflict | trap_generic
+# expect.status:
+#   resolved      the query must resolve to exactly expect.cases[0]
+#   ambiguous     the tool must ask, offering at least expect.cases
+#   not_resolved  the tool must not pick any case (all trap_* kinds)
+
+queries:
+  # Popular names
+  - {query: Shah Bano, kind: popular, expect: {status: resolved, cases: [shah-bano-1985]}}
+  - {query: ADM Jabalpur, kind: popular, expect: {status: resolved, cases: [adm-jabalpur-1976]}}
+  - {query: Habeas Corpus case, kind: popular, expect: {status: resolved, cases: [adm-jabalpur-1976]}}
+  - {query: Kesavananda Bharati, kind: popular, expect: {status: resolved, cases: [kesavananda-bharati-1973]}}
+  - {query: Basic Structure case, kind: popular, expect: {status: resolved, cases: [kesavananda-bharati-1973]}}
+  - {query: Golak Nath, kind: popular, expect: {status: resolved, cases: [golak-nath-1967]}}
+  - {query: Maneka Gandhi, kind: popular, expect: {status: resolved, cases: [maneka-gandhi-1978]}}
+  - {query: Minerva Mills, kind: popular, expect: {status: resolved, cases: [minerva-mills-1980]}}
+  - {query: Mandal Commission case, kind: popular, expect: {status: resolved, cases: [indra-sawhney-1992]}}
+  - {query: Bommai, kind: popular, expect: {status: resolved, cases: [sr-bommai-1994]}}
+  - {query: Vishaka, kind: popular, expect: {status: resolved, cases: [vishaka-1997]}}
+  - {query: Koushal, kind: popular, expect: {status: resolved, cases: [suresh-kumar-koushal-2013]}}
+  - {query: Right to Privacy case, kind: popular, expect: {status: resolved, cases: [puttaswamy-privacy-2017]}}
+  - {query: Aadhaar case, kind: popular, expect: {status: resolved, cases: [puttaswamy-aadhaar-2018]}}
+  - {query: Navtej Johar, kind: popular, expect: {status: resolved, cases: [navtej-singh-johar-2018]}}
+
+  # Formal titles, with the usual extra words
+  - {query: "Mohd. Ahmed Khan v. Shah Bano Begum and Ors.", kind: formal, expect: {status: resolved, cases: [shah-bano-1985]}}
+  - {query: "Additional District Magistrate, Jabalpur v. Shivakant Shukla", kind: formal, expect: {status: resolved, cases: [adm-jabalpur-1976]}}
+  - {query: "Kesavananda Bharati Sripadagalvaru v. State of Kerala and Anr.", kind: formal, expect: {status: resolved, cases: [kesavananda-bharati-1973]}}
+  - {query: "I.C. Golak Nath v. State of Punjab", kind: formal, expect: {status: resolved, cases: [golak-nath-1967]}}
+  - {query: "Indra Sawhney v. Union of India 1992", kind: formal, expect: {status: resolved, cases: [indra-sawhney-1992]}}
+  - {query: "Navtej Singh Johar v. Union of India", kind: formal, expect: {status: resolved, cases: [navtej-singh-johar-2018]}}
+
+  # Citations
+  - {query: "(1973) 4 SCC 225", kind: citation, expect: {status: resolved, cases: [kesavananda-bharati-1973]}}
+  - {query: "AIR 1978 SC 597", kind: citation, expect: {status: resolved, cases: [maneka-gandhi-1978]}}
+  - {query: "A.I.R. 1976 S.C. 1207", kind: citation, expect: {status: resolved, cases: [adm-jabalpur-1976]}}
+  - {query: "[1967] 2 S.C.R. 762", kind: citation, expect: {status: resolved, cases: [golak-nath-1967]}}
+  - {query: "1992 Supp (3) SCC 217", kind: citation, expect: {status: resolved, cases: [indra-sawhney-1992]}}
+  - {query: "(2014) 1 SCC 1", kind: citation, expect: {status: resolved, cases: [suresh-kumar-koushal-2013]}}
+
+  # Misspellings
+  - {query: Keshavananda Bharati, kind: misspelling, expect: {status: resolved, cases: [kesavananda-bharati-1973]}}
+  - {query: Kesavanada Bharathi, kind: misspelling, expect: {status: resolved, cases: [kesavananda-bharati-1973]}}
+  - {query: Golaknath, kind: misspelling, expect: {status: resolved, cases: [golak-nath-1967]}}
+  - {query: Menaka Gandhi, kind: misspelling, expect: {status: resolved, cases: [maneka-gandhi-1978]}}
+  - {query: Indira Sawhney, kind: misspelling, expect: {status: resolved, cases: [indra-sawhney-1992]}}
+  - {query: Vishakha, kind: misspelling, expect: {status: resolved, cases: [vishaka-1997]}}
+  - {query: Puttuswamy privacy, kind: misspelling, expect: {status: resolved, cases: [puttaswamy-privacy-2017]}}
+
+  # Ambiguous: the tool must ask
+  - {query: Puttaswamy, kind: ambiguous, expect: {status: ambiguous, cases: [puttaswamy-privacy-2017, puttaswamy-aadhaar-2018]}}
+  - {query: "Justice K.S. Puttaswamy v. Union of India", kind: ambiguous, expect: {status: ambiguous, cases: [puttaswamy-privacy-2017, puttaswamy-aadhaar-2018]}}
+
+  # Traps: the tool must not pick a case
+  - {query: "Sharma v. State of Kerala", kind: trap_fake}
+  - {query: "Rajesh Malhotra v. Union of India", kind: trap_fake}
+  - {query: "Imran Khan v. State of Punjab", kind: trap_fake}
+  - {query: "Priya Venkataraman v. Bharat Petroleum", kind: trap_fake}
+  - {query: "Shah Bano v. Golak Nath", kind: trap_fake, note: "two real names stitched together"}
+  - {query: Maneka Gandhi 1985, kind: trap_wrong_year}
+  - {query: Kesavananda Bharati 1980, kind: trap_wrong_year}
+  - {query: "Shah Bano 1975", kind: trap_wrong_year}
+  - {query: "(1973) 4 SCC 999", kind: trap_bad_citation, note: "plausible format, no such page in our table"}
+  - {query: "AIR 1948 SC 12", kind: trap_bad_citation, note: "before the Supreme Court existed"}
+  - {query: "(2099) 1 SCC 1", kind: trap_bad_citation}
+  - {query: "(1960) 2 SCC 100", kind: trap_bad_citation, note: "SCC began in 1969"}
+  - {query: "Maneka Gandhi (1973) 4 SCC 225", kind: trap_conflict}
+  - {query: "(1973) 4 SCC 225 AIR 1978 SC 597", kind: trap_conflict}
+  - {query: Union of India, kind: trap_generic}
+  - {query: State of Kerala, kind: trap_generic}
