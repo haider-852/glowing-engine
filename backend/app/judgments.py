@@ -46,8 +46,8 @@ _HEADING = re.compile(r"^(?:J\s*U\s*D\s*G\s*M\s*E\s*N\s*T|O\s*R\s*D\s*E\s*R)\s*$
 # "The Judgment of the Court was delivered by", "The following Order of the
 # Court was passed:". "of" is often OCR'd ("o£").
 _DELIVERED_BY = re.compile(
-    r"^the (?:following )?(?:judgments?|order|opinion) \S{1,3} the court (?:was|were) (?:delivered|passed|pronounced)"
-    r"(?: by)?\s*[:.\-]*\s*(?P<rest>.*)$",
+    r"^the (?:following )?(?:judgments?|order|opinion)\*? \S{1,3} the court (?:was|were) "
+    r"(?:delivered|passed|pronounced)(?: by)?\s*[:.\-]*\s*(?P<rest>.*)$",
     re.I,
 )
 _JUDGE_TITLE = r"(?:C\.?\s*J\.?(?:\s*I\.?)?|JJ?\.?)"

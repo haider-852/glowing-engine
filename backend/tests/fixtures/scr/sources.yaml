@@ -70,6 +70,27 @@ judgments:
     neutral: 2015 INSC 285
     decided: "2015-12-16"
     why: Five-judge order with numbered paragraphs and margin letters in front of paragraph numbers.
+  - id: "2022_2_925_960"
+    year: "2022"
+    title: Gangadhar Narayan Nayak v. State of Karnataka
+    citation: "[2022] 2 S.C.R. 925"
+    neutral: 2022 INSC 318
+    decided: "2022-03-21"
+    why: "Split bench: Indira Banerjee J. and a dissent by J.K. Maheshwari J. (first paragraph unnumbered), then the bench's order referring the case."
+  - id: "2023_4_916_938"
+    year: "2023"
+    title: Yamal Manojbhai v. Union of India
+    citation: "[2023] 4 S.C.R. 916"
+    neutral: 2023 INSC 498
+    decided: "2023-05-04"
+    why: Split bench, 2023 typed layout; "The Judgments* of the Court"; a first-page head printed as "[2023]REPORTS".
+  - id: "2023_8_828_856"
+    year: "2023"
+    title: K.B. Tea Product v. Commercial Tax Officer, Siliguri
+    citation: "[2023] 8 S.C.R. 828"
+    neutral: 2023 INSC 530
+    decided: "2023-05-12"
+    why: "Split bench: M.R. Shah J. and a dissent by Krishna Murari J.; sub-paragraphs \"2.1\"; disposal \"Matters to be placed before Hon'ble CJI.\""
   - id: "2023_12_370_380"
     year: "2023"
     title: People's Union for Civil Liberties v. State of Maharashtra
@@ -84,3 +105,10 @@ judgments:
     neutral: 2024 INSC 130
     decided: "2024-02-16"
     why: Current Digital SCR layout; hanging paragraph numbers and "3.1." sub-paragraphs.
+  - id: "2024_9_683_723"
+    year: "2024"
+    title: Arvind Kejriwal v. Central Bureau of Investigation
+    citation: "[2024] 9 S.C.R. 683"
+    neutral: 2024 INSC 687
+    decided: "2024-09-13"
+    why: Current layout with two opinions (Surya Kant J., Ujjal Bhuyan J. concurring); the second author line follows a page break; footnotes.

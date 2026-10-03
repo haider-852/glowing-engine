@@ -7,7 +7,7 @@ judgment again before updating it.
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
 
@@ -24,11 +24,18 @@ FIXTURES = Path(__file__).parent / "fixtures" / "scr"
 class Expected:
     authors: list[list[str]]
     paragraphs: int
-    numbers: list[str]
+    numbers: list[str] | int  # the court's numbers in order, or how many there are
     footnotes: int
     first: str  # start of the first paragraph
     last: str  # end of the last paragraph
     trailer: str  # first line after the judgment
+    warnings: list[str] = field(default_factory=list)  # the splitter's
+
+
+def no_numbers(opinions: int) -> list[str]:
+    return [
+        f"Opinion {n} has no court paragraph numbers; references use our own numbering." for n in range(1, opinions + 1)
+    ]
 
 
 EXPECTED = {
@@ -41,6 +48,7 @@ EXPECTED = {
         first="The petitioner is the printer, publisher and editor",
         last="enough on the subject in the connected c~se.",
         trailer="Petition allotved.",
+        warnings=no_numbers(2),
     ),
     "1951_1_266_276": Expected(
         authors=[["MAHAJAN"]],
@@ -50,6 +58,7 @@ EXPECTED = {
         first="This is an appeal from a judJtment of the High Court",
         last="levy the same and pay it to the plaintiff.",
         trailer="Appeal allowed.",
+        warnings=no_numbers(1),
     ),
     "S_1962_3_369_385": Expected(
         authors=[["AYYA:XGAR"]],  # Rajagopala Ayyangar J., as scanned
@@ -59,6 +68,7 @@ EXPECTED = {
         first="This appeal comes beforo. us by virtue of a certificate",
         last="there will be na order as to costs in the appeal.",
         trailer="Appeal allowed in part.",
+        warnings=no_numbers(1),
     ),
     "1978_3_963_970": Expected(
         authors=[["DESAI"]],
@@ -68,6 +78,7 @@ EXPECTED = {
         first="The unsuccessful plaintiff, appellant in this appeal",
         last="This appeal accordingly fails and is dismissed with costs.",
         trailer="S.R. Appeal dismissed.",
+        warnings=no_numbers(1),
     ),
     "1985_1_564_578": Expected(
         authors=[["CHANDRACHUD"]],
@@ -77,6 +88,7 @@ EXPECTED = {
         first="The petitioners, Prem Prakash and Dal Chand Anand,",
         last="the petition~rs the costs of these petitions.",
         trailer="M.L.A. Petitions allowed.",
+        warnings=no_numbers(1),
     ),
     "S_1994_6_171_179": Expected(
         authors=[["DR. ANAND"]],
@@ -86,6 +98,7 @@ EXPECTED = {
         first="This appeal, by special leave, has been filed by Shivappa",
         last="released from custody forthwith unless required in any other case.",
         trailer="A.G. Appeal allowed.",
+        warnings=no_numbers(1),
     ),
     "2005_3_1204_1209": Expected(
         authors=[[]],  # an order of the Court
@@ -95,6 +108,7 @@ EXPECTED = {
         first="These applications have been filed for clarification",
         last="disposed of with the aforementioned observations and directions.",
         trailer="R.P. Applications disposed of.",
+        warnings=no_numbers(1),
     ),
     "2015_14_975_984": Expected(
         authors=[[]],
@@ -104,6 +118,36 @@ EXPECTED = {
         first="The adjudication on the merits of the controversy,",
         last="all matters having been collectively heard, are disposed of.",
         trailer="Nidhi Jain Matters disposed of.",
+    ),
+    # Split bench: a dissent whose first paragraph is unnumbered in print, then
+    # the bench's order referring the case to a larger bench.
+    "2022_2_925_960": Expected(
+        authors=[["INDIRA BANERJEE"], ["J. K. MAHESHWARI"], []],
+        paragraphs=83,
+        numbers=79,
+        footnotes=0,
+        first="Leave granted.",
+        last="for assignment before an appropriate Bench.",
+        trailer="Devika Gujral Matter referred to larger Bench.",
+        warnings=["Opinion 2: numbering starts at 2, not 1."] + no_numbers(3)[2:],
+    ),
+    "2023_4_916_938": Expected(
+        authors=[["KRISHNA MURARI"], ["SANJAY KAROL"]],
+        paragraphs=85,
+        numbers=85,
+        footnotes=0,
+        first="The present writ petition filed under Article 32",
+        last="along with interlocutory applications, are disposed of.",
+        trailer="Divya Pandey Matter to be placed before Hon’ble CJI.",
+    ),
+    "2023_8_828_856": Expected(
+        authors=[["M. R. SHAH"], ["KRISHNA MURARI"]],
+        paragraphs=83,
+        numbers=83,
+        footnotes=0,
+        first="Feeling aggrieved and dissatisfied with the impugned",
+        last="the present batch of civil appeals are allowed.",
+        trailer="Divya Pandey Matters to be placed before Hon’ble CJI.",
     ),
     "2023_12_370_380": Expected(
         authors=[[]],
@@ -122,6 +166,17 @@ EXPECTED = {
         first="Leave granted.",
         last="Pending application(s), if any, stand disposed of.",
         trailer="Headnotes prepared by: Nidhi Jain Result of the case:",
+    ),
+    # Both opinions print their first paragraph without its "1.".
+    "2024_9_683_723": Expected(
+        authors=[["Surya Kant"], ["Ujjal Bhuyan"]],
+        paragraphs=116,
+        numbers=114,
+        footnotes=12,
+        first="Leave granted.",
+        last="Both the appeals are accordingly disposed of.",
+        trailer="Result of the case: Appeals disposed of.",
+        warnings=["Opinion 1: numbering starts at 2, not 1.", "Opinion 2: numbering starts at 2, not 1."],
     ),
 }
 
@@ -146,17 +201,13 @@ def test_sample(jid):
     assert cleaned.warnings == []
     assert [o.authors for o in split.opinions] == want.authors
     assert len(split.paragraphs) == want.paragraphs
-    assert [p.court_number for p in split.paragraphs if p.court_number] == want.numbers
+    numbers = [p.court_number for p in split.paragraphs if p.court_number]
+    assert (numbers if isinstance(want.numbers, list) else len(numbers)) == want.numbers
     assert len(cleaned.footnotes) == want.footnotes
     assert split.paragraphs[0].text.startswith(want.first)
     assert split.paragraphs[-1].text.endswith(want.last)
     assert cleaned.trailer.splitlines()[0] == want.trailer
-    # Numbered judgments are numbered throughout; the rest warn that they are not.
-    if want.numbers:
-        assert all(p.court_number for p in split.paragraphs)
-        assert split.warnings == []
-    else:
-        assert all("no court paragraph numbers" in w for w in split.warnings)
+    assert split.warnings == want.warnings
 
 
 @pytest.mark.parametrize("jid", sorted(EXPECTED))
@@ -264,3 +315,17 @@ def test_list_marker_is_not_a_margin_letter():
     line = "    The rule provides for the following matters, which are set out in full:"
     text = "JUDGMENT\n\n" + "\n".join([line] * 6) + "\n    (a)     the first matter that the rule provides for\n"
     assert "(a) the first matter" in clean_scr(text).body
+
+
+def test_separate_opinions_in_current_volumes():
+    # Each opinion restarts its numbering; the label names the author.
+    _, split = load("2023_8_828_856")
+    dissent = next(p for p in split.paragraphs if p.opinion == 1)
+    assert dissent.court_number == "1"
+    assert dissent.text.startswith("I have had the advantage of reading the judgment proposed by my esteemed brother")
+    assert split.label(dissent) == "Murari J., para 1"
+    # The second author line comes straight after a page break.
+    _, split = load("2024_9_683_723")
+    concurring = next(p for p in split.paragraphs if p.opinion == 1)
+    assert concurring.text.startswith("I have gone through the draft judgment of my esteemed senior colleague")
+    assert split.paragraph(concurring.ordinal - 1).text == "Ordered accordingly."

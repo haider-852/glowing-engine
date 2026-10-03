@@ -80,7 +80,7 @@ _CITATION_HINT = re.compile(
 # The judgment starts after one of these.
 _ORDER_OF_COURT = re.compile(r"JUDGMENT\s*/\s*ORDER\s+OF\s+THE\s+SUPREME\s+COURT", re.I)
 _DELIVERED = re.compile(
-    r"The\s+(?:following\s+)?(?:Judgments?|Orders?|Opinions?)\s+\S{1,3}\s+the\s+Court\s+(?:was|were)\s+"
+    r"The\s+(?:following\s+)?(?:Judgments?|Orders?|Opinions?)\*?\s+\S{1,3}\s+the\s+Court\s+(?:was|were)\s+"
     r"(?:delivered|passed|pronounced)"
     r"(?:\s+by)?\s*[:.\-]*",
     re.I,
@@ -88,17 +88,23 @@ _DELIVERED = re.compile(
 _DELIVERED_LOOSE = re.compile(r"\b(?:was|were)\s+delivered\s+by\b", re.I)
 _HEADING = re.compile(r"^(?:J\s*U\s*D\s*G\s*M\s*E\s*N\s*T|O\s*R\s*D\s*E\s*R)$", re.I)
 # The start of an opinion: "MAHAJAN J.-This", "DESAI, J.-The", "CHANDRACHUD, C. J. The",
-# "DR. ANAND, J. This". Capitals only, so a sentence citing "Holmes, J." does not match.
+# "DR. ANAND, J. This", or "KRISHNA MURARI, J." alone. Capitals only, so a
+# sentence citing "Holmes, J." does not match.
 _AUTHOR_START = re.compile(
     r"^(?:PER\s+)?(?:DR\.?\s+)?[A-Z][A-Z.'\-:~]+(?:\s+[A-Z][A-Za-z.'\-:~]*){0,6},?\s*"
-    r"(?:C\.?\s*J\.?(?:\s*I\.?)?|JJ?\.)\s*(?:[-—–:]|\s[A-Z])"
+    r"(?:C\.?\s*J\.?(?:\s*I\.?)?|JJ?\.)\s*(?:[-—–:]|\s[A-Z]|$)"
 )
+
+_AUTHOR_ALONE = re.compile(r"^(?:PER\s+)?[A-Z][\w.'\- ]{1,60},\s*(?:C\.?\s*J\.?(?:\s*I\.?)?|JJ?\.)$")
 
 # The judgment ends at the editor's notes.
 _TRAILER_LINE = re.compile(r"^(?:Agents?\s+for\b|Headnotes\s+prepared\s+by\b|Result\s+of\s+the\s+case\b)", re.I)
 # "Appeal dismissed.", "Appeal allowed in part.", "Directions issued.": printed
 # flush right, sometimes after the editor's initials.
 _DISPOSAL = re.compile(r"^[A-Z][a-z]+(?:\s+[a-z]+){1,5}\s*\.$")
+# After the editor's name or initials, any short sentence: "Divya Pandey
+# Matter to be placed before Hon'ble CJI.", "Devika Gujral  Matter referred to larger Bench."
+_DISPOSAL_AFTER_EDITOR = re.compile(r"^[A-Z][\w’'.,]*(?:\s+[\w’'.,()]+){1,9}\.$")
 _BENCH = re.compile(r"^[\[(].*[A-Z]{3}")
 
 
@@ -139,7 +145,7 @@ def _is_running_head(raw: str, repeated: set[str]) -> bool:
         return False
     if _REPORTS.search(s) or _VOLUME_HEAD.match(s) or _PAGE_NUMBER.match(s) or _PRINTER_MARK.match(s):
         return True
-    if _SCR.search(s) and len(s) < 45:
+    if (_SCR.search(s) or re.search(r"REPORTS\b", s)) and len(s) < 45:
         return True
     has_page = bool(re.match(r"^\S{0,2}\d{2,4}\b", s) or re.search(r"\b\d{2,4}\S{0,2}$", s))
     if _TITLE_HEAD.search(s) and (has_page or _AUTHOR_IN_HEAD.search(s) or _head_key(s) in repeated):
@@ -280,11 +286,14 @@ def _with_paragraph_breaks(lines: list[_Line]) -> list[str]:
             closed_quote = prev.text[-1] in "\"'”’" and prev.end < prev.width - 8
             after_quote = ln.indent >= 2 and ended and (ln.indent <= prev.indent - 2 or closed_quote)
             centred = ln.indent > ln.width * 0.25 and len(ln.text) < ln.width * 0.5
+            # A judge's name on its own line starts an opinion ("Ujjal Bhuyan, J.").
+            author = bool(_AUTHOR_ALONE.match(ln.text)) and prev.text[-1] in '.:"”)'
             if (
                 (indented and prev_done)
                 or hanging
                 or after_quote
                 or centred
+                or author
                 or (prev.indent > prev.width * 0.25 and prev_done)
             ):
                 out.append("")
@@ -297,7 +306,11 @@ def _is_disposal(ln: _Line) -> bool:
     if not ln.segments:
         return False
     start, _, text = ln.segments[-1]
-    return start > ln.width * 0.35 and bool(_DISPOSAL.match(text)) and len(ln.segments) <= 2
+    if start <= ln.width * 0.35 or len(ln.segments) > 2:
+        return False
+    if len(ln.segments) == 2 and len(ln.segments[0][2]) <= 30:
+        return bool(_DISPOSAL_AFTER_EDITOR.match(text))
+    return bool(_DISPOSAL.match(text))
 
 
 _LIGATURES = str.maketrans({"ﬀ": "ff", "ﬁ": "fi", "ﬂ": "fl", "ﬃ": "ffi", "ﬄ": "ffl"})
