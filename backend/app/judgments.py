@@ -11,13 +11,15 @@ Handles the two layouts most SC judgments use:
   paragraphs numbered "1.", "2.", "23.1", numbering restarting in each
   separate opinion, and signature blocks;
 * older reports: unnumbered paragraphs separated by blank lines, opinions
-  starting "SIKRI, C.J.—The facts are ...".
+  starting "SIKRI, C.J.—The facts are ...", "MAHAJAN J.-This is ..." or, with
+  no dash, "CHANDRACHUD, C. J. The petitioners ...".
 
 Anything the splitter is unsure about goes into `warnings`, so a person can
 check the judgment before a brief is written from it.
 
-The input is cleaned text (after PDF extraction or OCR). Tune the patterns on
-real judgments before relying on them.
+The input is cleaned text (after PDF extraction or OCR). For Digital SCR
+PDFs, `scr.clean_scr` produces it; the samples in tests/fixtures/scr are the
+real judgments these patterns were tuned on.
 """
 
 from __future__ import annotations
@@ -41,16 +43,28 @@ _NOISE = [
 ]
 
 _HEADING = re.compile(r"^(?:J\s*U\s*D\s*G\s*M\s*E\s*N\s*T|O\s*R\s*D\s*E\s*R)\s*$", re.I)
-_DELIVERED_BY = re.compile(r"^the (?:judgment|order) of the court was delivered by\s*:?\s*(?P<rest>.*)$", re.I)
+# "The Judgment of the Court was delivered by", "The following Order of the
+# Court was passed:". "of" is often OCR'd ("o£").
+_DELIVERED_BY = re.compile(
+    r"^the (?:following )?(?:judgments?|order|opinion) \S{1,3} the court (?:was|were) (?:delivered|passed|pronounced)"
+    r"(?: by)?\s*[:.\-]*\s*(?P<rest>.*)$",
+    re.I,
+)
 _JUDGE_TITLE = r"(?:C\.?\s*J\.?(?:\s*I\.?)?|JJ?\.?)"
 # A judge's name: one to eight capitalised words ("D.Y. CHANDRACHUD",
 # "Dr Dhananjaya Y Chandrachud"). Requiring every word to be capitalised keeps
-# ordinary sentences ending in ", J." from being read as author lines.
-_NAME = r"(?P<name>(?:[A-Z][A-Za-z.'\-]*\s*){1,8}?)"
+# ordinary sentences ending in ", J." from being read as author lines. ":" and
+# "~" are OCR errors inside names in scanned reports ("AYYA:XGAR").
+_NAME = r"(?P<name>(?:[A-Z][A-Za-z.'\-:~]*\s*){1,8}?)"
 # "D.Y. CHANDRACHUD, J." on its own line.
 _AUTHOR_LINE = re.compile(rf"^(?:PER\s+)?{_NAME},\s*{_JUDGE_TITLE}\s*[:.\-—–]*\s*$")
-# "SIKRI, C.J.—The facts ..." (older reports).
-_AUTHOR_INLINE = re.compile(rf"^{_NAME},\s*{_JUDGE_TITLE}\s*[—–]+\s*(?P<rest>\S.*)$")
+# "SIKRI, C.J.—The facts ...", "MAHAJAN J.-This is ..." (older reports).
+_AUTHOR_INLINE = re.compile(rf"^{_NAME},?\s*{_JUDGE_TITLE}\s*[—–\-]+\s*(?P<rest>\S.*)$")
+# "CHANDRACHUD, C. J. The petitioners ...", "DR. ANAND, J. This appeal ...":
+# no dash, so the name must be in capitals and followed by a comma.
+_AUTHOR_INLINE_CAPS = re.compile(
+    rf"^(?P<name>(?:DR\.?\s+)?[A-Z][A-Z.'\-]+(?:\s+[A-Z][A-Z.'\-]+){{0,6}}),\s*{_JUDGE_TITLE}\s+(?P<rest>[A-Z\"“].*)$"
+)
 # "...........................J." and the bracketed name under it.
 _SIGNATURE = re.compile(rf"^\.{{3,}}\s*,?\s*{_JUDGE_TITLE}\s*$")
 _SIGNATURE_NAME = re.compile(r"^[\[(]\s*[A-Z][A-Z.\s'\-]+[\])]\s*$")
@@ -59,8 +73,11 @@ _PLACE_DATE = re.compile(
     r"\s+\d{1,2},\s*\d{4}\.?)$",
     re.I,
 )
-# "12. The appellant ..." or "12.3 The appellant ..."
-_NUMBERED = re.compile(r"^(?P<num>\d{1,4}(?:\.\d{1,3})*)(?P<dot>\.)?\s+(?P<rest>\S.*)$")
+# "12. The appellant ...", "12.3 The appellant ...", "12 The appellant ..."
+# and the typo "12 .The appellant".
+_NUMBERED = re.compile(r"^(?P<num>\d{1,4}(?:\.\d{1,3})*)(?:(?P<dot>\s?\.)(?:\s+|(?=[A-Z\"“(]))|\s+)(?P<rest>\S.*)$")
+# A paragraph number alone on its line, as plain pdftotext output gives it.
+_NUMBER_ALONE = re.compile(r"^\s*\d{1,3}(?:\.\d{1,3})*\.\s*$")
 
 MAX_NUMBER_GAP = 5
 
@@ -119,6 +136,7 @@ class _Splitter:
         self.blocks: list[list[str]] = []  # blocks of the paragraph being built
         self.court_number: str | None = None
         self.last_top: int | None = None  # last top-level number in this opinion
+        self.dotted: bool | None = None  # whether this opinion writes "1." or "1"
         self.pending_opinion = False
         self.in_trailer = False
         self.prev_blank = True
@@ -159,6 +177,7 @@ class _Splitter:
         self.flush()
         self.opinions.append(Opinion(len(self.opinions), authors))
         self.last_top = None
+        self.dotted = None
         self.pending_opinion = False
         self.in_trailer = False
 
@@ -169,7 +188,11 @@ class _Splitter:
         top = parts[0]
         if len(parts) > 1:  # "23.1": a sub-paragraph of the current paragraph
             return self.last_top == top
-        if not has_dot:
+        if self.dotted is not None and has_dot != self.dotted:
+            return False
+        if not has_dot and not self.prev_blank:
+            # "1 The order ..." numbering is accepted only at a paragraph
+            # break: wrapped text often starts with a number ("5 of the Act").
             return False
         if self.last_top is None:
             if top == 1:
@@ -231,7 +254,7 @@ class _Splitter:
         if boundary and (m := _AUTHOR_LINE.match(line)):
             self.start_opinion([_clean_author(m["name"])])
             return
-        if boundary and (m := _AUTHOR_INLINE.match(line)):
+        if boundary and ((m := _AUTHOR_INLINE.match(line)) or (m := _AUTHOR_INLINE_CAPS.match(line))):
             self.start_opinion([_clean_author(m["name"])])
             self.start_paragraph(m["rest"], None)
             return
@@ -248,6 +271,7 @@ class _Splitter:
         if (m := _NUMBERED.match(line)) and self.accept_number(m["num"], bool(m["dot"])):
             if "." not in m["num"]:
                 self.last_top = int(m["num"])
+                self.dotted = bool(m["dot"])
             self.start_paragraph(m["rest"], m["num"])
             return
         self.add_line(line)
@@ -282,8 +306,28 @@ def _join_hyphens(text: str) -> str:
     return re.sub(r"(\w)- (\w)", r"\1-\2", text)
 
 
+def _join_lone_numbers(lines: list[str]) -> list[str]:
+    """Put a paragraph number that sits alone on its line ("1.") in front of
+    the text that follows it."""
+    out: list[str] = []
+    carry: str | None = None
+    for line in lines:
+        if carry is not None:
+            if not line.strip():
+                continue
+            out.append(f"{carry} {line.strip()}")
+            carry = None
+        elif _NUMBER_ALONE.match(line):
+            carry = line.strip()
+        else:
+            out.append(line)
+    if carry is not None:
+        out.append(carry)
+    return out
+
+
 def split_judgment(text: str) -> SplitJudgment:
-    lines = text.replace("\r\n", "\n").replace("\f", "\n").split("\n")
+    lines = _join_lone_numbers(text.replace("\r\n", "\n").replace("\f", "\n").split("\n"))
     splitter = _Splitter()
     for line in lines:
         splitter.feed(line)

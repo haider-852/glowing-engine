@@ -5,3 +5,4 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .env
+backend/tests/fixtures/scr/pdf/

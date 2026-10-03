@@ -158,3 +158,54 @@ def test_sentence_ending_in_judge_name_is_not_an_author_line():
     assert [p.court_number for p in j.paragraphs] == ["1", "2"]
     assert j.paragraph(1).text.endswith("by Krishna Iyer, J.")
     assert j.warnings == []
+
+
+def test_scanned_report_author_lines():
+    # Scanned reports print a hyphen for the dash and often drop the comma;
+    # later reports drop the dash too.
+    text = (
+        "MAHAJAN J.-This is an appeal.\n\nIt fails.\n\n"
+        "FAZL ALI J.-I dissent.\n\n"
+        "CHANDRACHUD, C. J. The petitioners are members of a scheduled caste.\n\n"
+        "DR. ANAND, J. This appeal is allowed.\n"
+    )
+    j = split_judgment(text)
+    assert [o.authors for o in j.opinions] == [["MAHAJAN"], ["FAZL ALI"], ["CHANDRACHUD"], ["DR. ANAND"]]
+    assert [p.text for p in j.paragraphs][2:] == [
+        "I dissent.",
+        "The petitioners are members of a scheduled caste.",
+        "This appeal is allowed.",
+    ]
+
+
+def test_no_dash_author_line_needs_capitals():
+    # "Krishna Iyer, J. The ..." in running text is a citation, not an opinion.
+    text = "JUDGMENT\n\n1. We agree.\n\nKrishna Iyer, J. The view was approved.\n"
+    j = split_judgment(text)
+    assert len(j.opinions) == 1
+
+
+def test_order_passed_marker():
+    j = split_judgment("The following Order of the Court was passed:\n\nThe applications are disposed of.\n")
+    assert len(j.opinions) == 1
+    assert j.paragraph(1).text == "The applications are disposed of."
+    assert not any("No judgment heading" in w for w in j.warnings)
+
+
+def test_numbers_without_dots():
+    # Some judgments number paragraphs "1 The order ...". A wrapped line that
+    # starts with the next number is not a paragraph.
+    text = "ORDER\n\n1 The order of this Court sets out the background under Section\n2 of the Act.\n\n2 We agree.\n"
+    j = split_judgment(text)
+    assert [p.court_number for p in j.paragraphs] == ["1", "2"]
+    assert j.paragraph(1).text.endswith("Section 2 of the Act.")
+
+
+def test_numbering_typos_and_lone_numbers():
+    # "22 .The" is a typo in a 2023 order; plain pdftotext puts "1." alone on its line.
+    text = "ORDER\n\n1.\n\nLeave granted.\n\n2 .The appeal is allowed.\n"
+    j = split_judgment(text)
+    assert [(p.court_number, p.text) for p in j.paragraphs] == [
+        ("1", "Leave granted."),
+        ("2", "The appeal is allowed."),
+    ]
