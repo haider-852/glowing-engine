@@ -105,12 +105,12 @@ def best_token_scores(source: list[str], target: list[str]) -> list[float]:
     return [max(word_similarity(s, t) for t in pool) for s in source]
 
 
-def coverage(source: list[str], target: list[str]) -> float:
+def coverage(source: list[str], target: list[str], threshold: float = TOKEN_MATCH) -> float:
     """Share of source tokens that have a match in target."""
     if not source:
         return 0.0
     scores = best_token_scores(source, target)
-    return sum(1 for s in scores if s >= TOKEN_MATCH) / len(source)
+    return sum(1 for s in scores if s >= threshold) / len(source)
 
 
 def titles_match(a: str, b: str, threshold: float = 0.8) -> bool:
