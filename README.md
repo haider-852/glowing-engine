@@ -20,7 +20,7 @@ must pass already exist.
 | `backend/app/scr.py` | Cleans the text of a Digital SCR PDF (`pdftotext -layout`) for the splitter: separates headnotes, counsel and the editor's notes from the judgment, and removes running heads, page numbers, margin letters, marginal notes and footnotes. |
 | `backend/app/sci.py` | The same for judgment PDFs from the SC website, in both of its layouts: JUDIS text (to about 2009) and the signed judgment (from about 2010). Removes the "Signature Not Verified" stamp, "Page 3 of 22", running lines, tables of contents, footnotes and the Record of Proceedings, and finds paragraphs in double-spaced text. |
 | `backend/tests/fixtures/scr/` | Fourteen Digital SCR reports, 1950 to 2024, as extracted text, with their sources in `sources.yaml`. `scripts/fetch_scr_samples.py` downloads them again. |
-| `backend/tests/fixtures/sci/` | Ten judgment PDFs from the SC website, 1954 to 2026, as extracted text, with their sources in `sources.yaml`. `scripts/fetch_sci_samples.py` downloads them again. |
+| `backend/tests/fixtures/sci/` | Eleven judgment PDFs from the SC website, 1950 to 2026, as extracted text, with their sources in `sources.yaml`. `scripts/fetch_sci_samples.py` downloads them again. |
 | `backend/app/grounding.py` | Checks a brief against the judgment. Drops any claim that cites no paragraph, misquotes, or names a case or citation that isn't in the paragraphs it cites. Flags cases that aren't in our table yet. |
 | `backend/app/pipeline.py` | Query → resolution → verification. The source store is the only part that will talk to case-law sources. |
 | `backend/app/main.py` | FastAPI: `/api/citations/parse`, `/api/resolve`, `/api/lookup`. |
