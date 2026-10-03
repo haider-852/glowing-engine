@@ -131,18 +131,20 @@ EXPECTED = {
         trailer="Devika Gujral Matter referred to larger Bench.",
         warnings=["Opinion 2: numbering starts at 2, not 1."] + no_numbers(3)[2:],
     ),
+    # 85 numbered paragraphs and four section headings ("ANALYSIS", "CONCLUSION").
     "2023_4_916_938": Expected(
         authors=[["KRISHNA MURARI"], ["SANJAY KAROL"]],
-        paragraphs=85,
+        paragraphs=89,
         numbers=85,
         footnotes=0,
         first="The present writ petition filed under Article 32",
         last="along with interlocutory applications, are disposed of.",
         trailer="Divya Pandey Matter to be placed before Hon’ble CJI.",
     ),
+    # 83 numbered paragraphs; the dissent has four section headings.
     "2023_8_828_856": Expected(
         authors=[["M. R. SHAH"], ["KRISHNA MURARI"]],
-        paragraphs=83,
+        paragraphs=87,
         numbers=83,
         footnotes=0,
         first="Feeling aggrieved and dissatisfied with the impugned",
@@ -338,3 +340,21 @@ def test_words_split_across_lines_are_rejoined():
     assert "is perpetuation of injustice" in text
     text = " ".join(p.text for p in load("2022_2_925_960")[1].paragraphs)
     assert "non-cognizable" in text and "noncognizable" not in text
+
+
+def test_section_headings_are_paragraphs_of_their_own():
+    # Before, "RULE OF LAW" ended paragraph 8 of the dissent.
+    _, split = load("2023_8_828_856")
+    heading = next(p for p in split.paragraphs if p.text == "RULE OF LAW")
+    assert (heading.opinion, heading.court_number) == (1, None)
+    assert split.paragraph(heading.ordinal - 1).text.endswith(
+        "limited only to the second question posed before this Court."
+    )
+    assert split.paragraph(heading.ordinal + 1).court_number == "9"
+
+
+def test_title_head_wrapped_over_two_lines_is_dropped():
+    # "SUPREME COURT ADVOCATES-ON-RECORD    979" / "ASSOCIATION v. UNION OF INDIA"
+    body = load("2015_14_975_984")[0].body
+    assert "ADVOCATES-ON-RECORD" not in body
+    assert "and on the unanimous endorsement of all the learned counsel" in " ".join(body.split())

@@ -26,19 +26,26 @@ from app.scr import clean_scr
 FIXTURES = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "scr"
 
 
+def download(jid: str) -> Path:
+    """The sample's PDF, fetched from the mirror unless it is already cached."""
+    manifest = yaml.safe_load((FIXTURES / "sources.yaml").read_text())
+    entry = next(e for e in manifest["judgments"] if e["id"] == jid)
+    pdf = FIXTURES / "pdf" / f"{jid}.pdf"
+    if not pdf.exists():
+        pdf.parent.mkdir(exist_ok=True)
+        url = f"{manifest['source']}/data/pdf/year={entry['year']}/english/{jid}_EN.pdf"
+        with urllib.request.urlopen(url, timeout=60) as resp:
+            pdf.write_bytes(resp.read())
+    return pdf
+
+
 def main(only: list[str]) -> None:
     manifest = yaml.safe_load((FIXTURES / "sources.yaml").read_text())
-    pdf_dir = FIXTURES / "pdf"
-    pdf_dir.mkdir(exist_ok=True)
     for entry in manifest["judgments"]:
         jid = entry["id"]
         if only and jid not in only:
             continue
-        pdf = pdf_dir / f"{jid}.pdf"
-        if not pdf.exists():
-            url = f"{manifest['source']}/data/pdf/year={entry['year']}/english/{jid}_EN.pdf"
-            with urllib.request.urlopen(url, timeout=60) as resp:
-                pdf.write_bytes(resp.read())
+        pdf = download(jid)
         txt = FIXTURES / f"{jid}.txt"
         subprocess.run(["pdftotext", "-layout", "-enc", "UTF-8", str(pdf), str(txt)], check=True)
         text = txt.read_text()

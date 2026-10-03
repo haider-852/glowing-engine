@@ -241,3 +241,72 @@ def test_line_break_hyphens_without_evidence():
         "threatening",  # a suffix
     ):
         assert expected in para, expected
+
+
+def test_signature_blocks_as_the_website_prints_them():
+    # Ellipsis characters, a mixed-case name, and "11th March, 2026".
+    text = (
+        "JUDGMENT\n\n1. The appeal is allowed.\n\n….……………………J.\n(J.B. Pardiwala)\n\n"
+        "....................................... J.\n[K. V. VISWANATHAN]\n\nNew Delhi;\n11th March, 2026.\n"
+    )
+    j = split_judgment(text)
+    assert [p.text for p in j.paragraphs] == ["The appeal is allowed."]
+
+
+def test_order_of_the_court_after_a_split_decision():
+    text = (
+        "SINHA, J.—The appeal fails.\n\nDAYAL, J.—I dissent.\n\n"
+        "By COURT : In view of the majority judgment the appeal is dismissed.\n"
+    )
+    j = split_judgment(text)
+    assert [o.authors for o in j.opinions] == [["SINHA"], ["DAYAL"], []]
+    assert j.paragraphs[-1].text == "In view of the majority judgment the appeal is dismissed."
+
+
+def test_judge_quoted_by_name_is_not_a_new_opinion():
+    # A name heading a quotation, whether the quotation opens with a quote
+    # mark or with the quoted judgment's own paragraph number.
+    text = (
+        "JUDGMENT\n\nA.B. RAO, J.\n\n1. Counsel relied on two passages:\n\nA.K. Sikri, J.\n\n"
+        "“219. Passive euthanasia occurs when treatment is withdrawn.”\n\nDr. D.Y. Chandrachud, J.\n\n"
+        "333. I am also of the view that the directive is valid.\n\n2. We agree.\n"
+    )
+    j = split_judgment(text)
+    assert [o.authors for o in j.opinions] == [["A.B. RAO"]]
+    assert [p.court_number for p in j.paragraphs] == ["1", "2"]
+
+
+def test_quoted_section_numbers_do_not_skip_the_numbering():
+    # "5." and "7." are sections of the Act quoted in paragraph 3; the
+    # judgment's own paragraph 4 follows the quotation.
+    text = (
+        "JUDGMENT\n\n1. Leave granted.\n\n2. The facts are brief.\n\n3. The relevant sections read:\n\n"
+        "5. Procedure applicable to State Commissions.\n\n7. Power and procedure of the National Commission.\n\n"
+        "4. A reading of these provisions is clear.\n"
+    )
+    j = split_judgment(text)
+    assert [p.court_number for p in j.paragraphs] == ["1", "2", "3", "4"]
+    assert "7. Power and procedure" in j.paragraph(3).text
+    assert j.warnings == []
+
+
+def test_headings_end_the_paragraph_before_them():
+    text = (
+        "JUDGMENT\n\n1. Leave granted.\n\nBRIEF FACTS\n\n2. The facts are these.\n\n(a) The first fact\n\n"
+        "3. The second.\n\nDIAGNOSIS: GAUZE PIECES WITHIN A MASS\n\nThe report ends here.\n\n4. The last.\n"
+    )
+    j = split_judgment(text)
+    assert [(p.court_number, p.text) for p in j.paragraphs[:5]] == [
+        ("1", "Leave granted."),
+        (None, "BRIEF FACTS"),
+        ("2", "The facts are these."),
+        (None, "(a) The first fact"),
+        ("3", "The second.\n\nDIAGNOSIS: GAUZE PIECES WITHIN A MASS\n\nThe report ends here."),
+    ]
+
+
+def test_a_list_late_in_an_unnumbered_judgment_is_not_numbering():
+    paras = "\n\n".join(f"Paragraph {n} of the judgment." for n in range(1, 8))
+    text = f"MAHAJAN J.-{paras}\n\n1. Under section 8 the findings are final.\n\n2. Under section 34 they are not.\n"
+    j = split_judgment(text)
+    assert all(p.court_number is None for p in j.paragraphs)

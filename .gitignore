@@ -6,3 +6,4 @@ __pycache__/
 .ruff_cache/
 .env
 backend/tests/fixtures/scr/pdf/
+backend/tests/fixtures/sci/pdf/

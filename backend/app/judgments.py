@@ -18,8 +18,9 @@ Anything the splitter is unsure about goes into `warnings`, so a person can
 check the judgment before a brief is written from it.
 
 The input is cleaned text (after PDF extraction or OCR). For Digital SCR
-PDFs, `scr.clean_scr` produces it; the samples in tests/fixtures/scr are the
-real judgments these patterns were tuned on.
+PDFs, `scr.clean_scr` produces it, and for judgment PDFs from the SC website
+`sci.clean_sci`; the samples in tests/fixtures/scr and tests/fixtures/sci are
+the real judgments these patterns were tuned on.
 """
 
 from __future__ import annotations
@@ -66,21 +67,42 @@ _AUTHOR_INLINE = re.compile(rf"^{_NAME},?\s*{_JUDGE_TITLE}\s*[—–\-]+\s*(?P<r
 _AUTHOR_INLINE_CAPS = re.compile(
     rf"^(?P<name>(?:DR\.?\s+)?[A-Z][A-Z.'\-]+(?:\s+[A-Z][A-Z.'\-]+){{0,6}}),\s*{_JUDGE_TITLE}\s+(?P<rest>[A-Z\"“].*)$"
 )
-# "...........................J." and the bracketed name under it.
-_SIGNATURE = re.compile(rf"^\.{{3,}}\s*,?\s*{_JUDGE_TITLE}\s*$")
-_SIGNATURE_NAME = re.compile(r"^[\[(]\s*[A-Z][A-Z.\s'\-]+[\])]\s*$")
+# "...........................J.", "….………………….…J." and the bracketed name
+# under it: "[A.B. RAO]", "(J.B. Pardiwala)".
+_SIGNATURE = re.compile(rf"^[.…·]{{3,}}[.…·\s]*,?\s*{_JUDGE_TITLE}\s*$")
+_SIGNATURE_NAME = re.compile(r"^[\[(]\s*(?:Dr\.?\s*)?[A-Z][A-Za-z.\s'\-]+[\])]\s*$")
+_MONTH = r"(?:january|february|march|april|may|june|july|august|september|october|november|december)"
+# "New Delhi;", "May 1, 2019", "SEPTEMBER 28, 2026.", "11th March, 2026".
 _PLACE_DATE = re.compile(
-    r"^(new delhi[;,.]?|(january|february|march|april|may|june|july|august|september|october|november|december)"
-    r"\s+\d{1,2},\s*\d{4}\.?)$",
+    rf"^(new delhi[;,.]?|{_MONTH}\s+\d{{1,2}},\s*\d{{4}}\.?|\d{{1,2}}(?:st|nd|rd|th)?\s+{_MONTH},?\s*\d{{4}}\.?)$",
     re.I,
 )
+# "By COURT : In view of the majority judgment the appeal is dismissed": the
+# bench's order after a split decision.
+_BY_COURT = re.compile(r"^by\s+(?:the\s+)?court\s*[:.\-—–]+\s*(?P<rest>\S.*)$", re.I)
+# A quotation, or a paragraph number no new opinion starts with: what follows
+# a judge's name quoted as a heading ("A.K. Sikri, J." / "“219. Passive ...").
+_QUOTED_AFTER_NAME = re.compile(r"^(?:[\"“‘']|\d{1,4}\b)")
 # "12. The appellant ...", "12.3 The appellant ...", "12 The appellant ..."
 # and the typo "12 .The appellant".
 _NUMBERED = re.compile(r"^(?P<num>\d{1,4}(?:\.\d{1,3})*)(?:(?P<dot>\s?\.)(?:\s+|(?=[A-Z\"“(]))|\s+)(?P<rest>\S.*)$")
+# A section heading in capitals: "BRIEF FACTS", "(A). FACTUAL MATRIX",
+# "COMMON CAUSE 2018", "(1) WHETHER ... “MEDICAL TREATMENT”?".
+_CAPS_HEADING = re.compile(
+    r"^(?:\(?[A-Z0-9]{1,4}[).]\)?\.?\s+)?[\"“‘]?[A-Z][A-Z0-9 ,'’‘“”\"&()/:;\-–—]*[A-Z0-9)\-?”\"’]$"
+)
+# "I. Summary of our discussion", "(a) Understanding Common Cause 2018".
+_SUBHEADING = re.compile(
+    r"^(?:\((?:[A-Za-z]|[ivxlc]{1,5}|\d{1,2})\)|(?:[A-Za-z]|[IVXLC]{1,5})[.)])\.?\s+[A-Z“\"‘][^.;:,]{0,70}[A-Za-z0-9)”\"’?]$"
+)
 # A paragraph number alone on its line, as plain pdftotext output gives it.
 _NUMBER_ALONE = re.compile(r"^\s*\d{1,3}(?:\.\d{1,3})*\.\s*$")
 
 MAX_NUMBER_GAP = 5
+# Paragraphs an opinion may have before its numbering starts: an index, an
+# epigraph, "Leave granted.".
+MAX_UNNUMBERED_LEAD = 5
+LOOKAHEAD = 1000  # lines searched for a paragraph number before accepting a gap
 
 
 @dataclass
@@ -120,6 +142,16 @@ class SplitJudgment:
         return f"para {p.court_number}"
 
 
+def _is_caps_heading(line: str) -> bool:
+    return len(line) <= 80 and bool(_CAPS_HEADING.match(line)) and bool(re.search(r"[A-Z]{3}", line))
+
+
+def _is_heading(line: str) -> bool:
+    """A heading in capitals, or a short numbered or lettered one with no
+    closing punctuation: "(h) Best interest of the patient in India"."""
+    return _is_caps_heading(line) or bool(_SUBHEADING.match(line))
+
+
 def _short_name(name: str) -> str:
     return name.split()[-1].title() + " J."
 
@@ -129,8 +161,10 @@ def _clean_author(name: str) -> str:
 
 
 class _Splitter:
-    def __init__(self, words: Counter[str]) -> None:
+    def __init__(self, words: Counter[str], lines: list[str]) -> None:
         self.words = words  # the judgment's vocabulary, for line-break hyphens
+        self.lines = lines  # the whole text, to look ahead
+        self.pos = 0  # the line being fed
         self.header: list[str] = []
         self.opinions: list[Opinion] = []
         self.paragraphs: list[Paragraph] = []
@@ -197,20 +231,59 @@ class _Splitter:
             # break: wrapped text often starts with a number ("5 of the Act").
             return False
         if self.last_top is None:
+            unnumbered = sum(1 for p in self.paragraphs if p.opinion == len(self.opinions) - 1)
+            if unnumbered > MAX_UNNUMBERED_LEAD:
+                return False  # a list in an unnumbered judgment: "1. Under the provisions of section 8 ..."
             if top == 1:
                 return True
-            if top <= MAX_NUMBER_GAP:
+            if top <= MAX_NUMBER_GAP and not self.comes_later(1, has_dot):
                 self.warnings.append(f"Opinion {len(self.opinions)}: numbering starts at {top}, not 1.")
                 return True
             return False
         if top == self.last_top + 1:
             return True
-        if self.last_top < top <= self.last_top + MAX_NUMBER_GAP:
+        if self.last_top < top <= self.last_top + MAX_NUMBER_GAP and not self.comes_later(self.last_top + 1, has_dot):
             self.warnings.append(
                 f"Opinion {len(self.opinions)}: numbering jumps from {self.last_top} to {top}; "
                 "paragraphs may be missing."
             )
             return True
+        return False
+
+    def comes_later(self, number: int, has_dot: bool) -> bool:
+        """Whether paragraph `number` starts a paragraph further on in this
+        opinion. If it does, a number that skips ahead to here is a quoted
+        one: "18. Procedure applicable to State Commissions" from the Act,
+        with the judgment's own paragraph 14 after the quotation."""
+        prev_blank = False
+        for line in self.lines[self.pos + 1 : self.pos + 1 + LOOKAHEAD]:
+            s = line.strip()
+            if not s:
+                prev_blank = True
+                continue
+            if _HEADING.match(s) or _SIGNATURE.match(s):
+                return False  # the end of the opinion
+            m = _NUMBERED.match(s)
+            if prev_blank and m and m["num"] == str(number) and bool(m["dot"]) == has_dot:
+                return True
+            prev_blank = False
+        return False
+
+    def heads_next_paragraph(self) -> bool:
+        """Whether a line that looks like a heading is one: in numbered
+        opinions, the next paragraph number must follow it, perhaps after
+        further headings ("BRIEF FACTS" / "11. It is against ...", "(G).
+        CONCLUSION" / "I. Summary of our discussion" / "292. A conspectus").
+        Quoted capitals ("DIAGNOSIS: GAUZE PIECES ...") and list items stay
+        in their paragraph."""
+        if self.last_top is None:
+            return True
+        for line in self.lines[self.pos + 1 : self.pos + 20]:
+            s = line.strip()
+            if not s or _is_heading(s):
+                continue
+            m = _NUMBERED.match(s)
+            return bool(m) and m["num"] == str(self.last_top + 1)
         return False
 
     def at_opinion_boundary(self) -> bool:
@@ -222,7 +295,8 @@ class _Splitter:
 
     # Main loop
 
-    def feed(self, raw: str) -> None:
+    def feed(self, raw: str, next_line: str = "", pos: int = 0) -> None:
+        self.pos = pos
         line = raw.strip()
         if not line:
             self.blank()
@@ -230,11 +304,21 @@ class _Splitter:
             return
         if any(p.match(line) for p in _NOISE):
             return
-        self._feed(line, raw)
+        self._feed(line, raw, next_line.strip())
         self.prev_blank = False
         self.last_line = line
 
-    def _feed(self, line: str, raw: str) -> None:
+    def quoted_name(self, next_line: str) -> bool:
+        """Whether a judge's name alone on its line, inside an opinion, heads
+        a quotation from that judge rather than starting a new opinion."""
+        if self.pending_opinion or self.in_trailer or not self.opinions:
+            return False
+        if not _QUOTED_AFTER_NAME.match(next_line):
+            return False
+        number = re.match(r"\d+", next_line)
+        return number is None or int(number.group()) > MAX_NUMBER_GAP
+
+    def _feed(self, line: str, raw: str, next_line: str = "") -> None:
         if _SIGNATURE.match(line):
             self.flush()
             self.in_trailer = True
@@ -253,8 +337,12 @@ class _Splitter:
                 return
             line = m["rest"]
         boundary = self.at_opinion_boundary()
-        if boundary and (m := _AUTHOR_LINE.match(line)):
+        if boundary and (m := _AUTHOR_LINE.match(line)) and not self.quoted_name(next_line):
             self.start_opinion([_clean_author(m["name"])])
+            return
+        if boundary and self.opinions and (m := _BY_COURT.match(line)):
+            self.start_opinion([])
+            self.start_paragraph(m["rest"], None)
             return
         if boundary and ((m := _AUTHOR_INLINE.match(line)) or (m := _AUTHOR_INLINE_CAPS.match(line))):
             self.start_opinion([_clean_author(m["name"])])
@@ -276,16 +364,21 @@ class _Splitter:
                 self.dotted = bool(m["dot"])
             self.start_paragraph(m["rest"], m["num"])
             return
+        if self.prev_blank and _is_heading(line) and self.heads_next_paragraph():
+            # A heading ends the paragraph before it, numbered or not, and
+            # stands as a paragraph of its own.
+            self.start_paragraph(line, None)
+            return
         self.add_line(line)
 
     def finish(self, lines: list[str]) -> SplitJudgment:
         self.flush()
         if not self.opinions:
             # No opinion markers anywhere: the whole text is one opinion.
-            fresh = _Splitter(self.words)
+            fresh = _Splitter(self.words, lines)
             fresh.start_opinion([])
-            for line in lines:
-                fresh.feed(line)
+            for pos, (line, following) in enumerate(zip(lines, _following(lines), strict=True)):
+                fresh.feed(line, following, pos)
             fresh.flush()
             fresh.warnings.insert(0, "No judgment heading or author line found; treated the text as one opinion.")
             return SplitJudgment("", fresh.opinions, fresh.paragraphs, fresh.warnings)
@@ -383,7 +476,18 @@ def _join_lone_numbers(lines: list[str]) -> list[str]:
 
 def split_judgment(text: str) -> SplitJudgment:
     lines = _join_lone_numbers(text.replace("\r\n", "\n").replace("\f", "\n").split("\n"))
-    splitter = _Splitter(_vocabulary(lines))
-    for line in lines:
-        splitter.feed(line)
+    splitter = _Splitter(_vocabulary(lines), lines)
+    for pos, (line, following) in enumerate(zip(lines, _following(lines), strict=True)):
+        splitter.feed(line, following, pos)
     return splitter.finish(lines)
+
+
+def _following(lines: list[str]) -> list[str]:
+    """For each line, the next line that is not blank."""
+    out: list[str] = []
+    following = ""
+    for line in reversed(lines):
+        out.append(following)
+        if line.strip():
+            following = line
+    return out[::-1]

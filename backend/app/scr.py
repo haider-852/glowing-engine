@@ -1,10 +1,10 @@
 """Clean the text of a Digital SCR report before it is split.
 
-Digital SCR PDFs (digiscr.sci.gov.in) are Supreme Court Reports pages: the
-judgment is wrapped in the reporter's material, and every page carries
-furniture that is not judgment text. This module takes the output of
-`pdftotext -layout` and returns the judgment text the splitter expects, with
-the rest set aside:
+Digital SCR PDFs (scr.sci.gov.in, once digiscr.sci.gov.in) are Supreme Court
+Reports pages: the judgment is wrapped in the reporter's material, and every
+page carries furniture that is not judgment text. This module takes the output
+of `pdftotext -layout` and returns the judgment text the splitter expects,
+with the rest set aside:
 
 * header: the case title, bench, headnotes, counsel and the "judgment of the
   Court was delivered by" line;
@@ -153,6 +153,16 @@ def _is_running_head(raw: str, repeated: set[str]) -> bool:
     return False
 
 
+def _is_wrapped_title_head(first: str, second: str) -> bool:
+    """A title head wrapped over two lines, with the page number on the first
+    and " v. " only on the second: "SUPREME COURT ADVOCATES-ON-RECORD    979" /
+    "ASSOCIATION v. UNION OF INDIA"."""
+    a, b = " ".join(first.split()), " ".join(second.split())
+    has_page = re.search(r"\s\d{2,4}$", a) or re.match(r"^\d{2,4}\s", a)
+    caps = not re.search(r"[a-z]", a) and not re.search(r"[a-z]", _TITLE_HEAD.sub(" ", b))
+    return bool(has_page and caps and _TITLE_HEAD.search(b))
+
+
 def _strip_page_furniture(lines: list[str], repeated: set[str]) -> tuple[list[str], list[str]]:
     """Drop running heads and page numbers. Returns (kept lines, footnote lines).
 
@@ -164,7 +174,9 @@ def _strip_page_furniture(lines: list[str], repeated: set[str]) -> tuple[list[st
     # Running heads: up to four lines at the top of the page.
     prev_head = False
     for n, i in enumerate(content[:4]):
-        if _is_running_head(lines[i], repeated):
+        if _is_running_head(lines[i], repeated) or (
+            n == 0 and len(content) > 1 and _is_wrapped_title_head(lines[i], lines[content[1]])
+        ):
             drop.add(i)
             prev_head = True
             continue

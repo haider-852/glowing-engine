@@ -18,7 +18,9 @@ must pass already exist.
 | `backend/app/verification.py` | The rules for **Verified / Partly verified / Could not verify** (below). |
 | `backend/app/judgments.py` | Splits a judgment's text into opinions and paragraphs. Keeps the court's own numbering where there is one, gives every paragraph our own number, drops signatures and page furniture, and warns about gaps in the numbering. |
 | `backend/app/scr.py` | Cleans the text of a Digital SCR PDF (`pdftotext -layout`) for the splitter: separates headnotes, counsel and the editor's notes from the judgment, and removes running heads, page numbers, margin letters, marginal notes and footnotes. |
-| `backend/tests/fixtures/scr/` | Fourteen real judgments, 1950 to 2024, as extracted text, with their sources in `sources.yaml`. `scripts/fetch_scr_samples.py` downloads them again. |
+| `backend/app/sci.py` | The same for judgment PDFs from the SC website, in both of its layouts: JUDIS text (to about 2009) and the signed judgment (from about 2010). Removes the "Signature Not Verified" stamp, "Page 3 of 22", running lines, tables of contents, footnotes and the Record of Proceedings, and finds paragraphs in double-spaced text. |
+| `backend/tests/fixtures/scr/` | Fourteen Digital SCR reports, 1950 to 2024, as extracted text, with their sources in `sources.yaml`. `scripts/fetch_scr_samples.py` downloads them again. |
+| `backend/tests/fixtures/sci/` | Ten judgment PDFs from the SC website, 1954 to 2026, as extracted text, with their sources in `sources.yaml`. `scripts/fetch_sci_samples.py` downloads them again. |
 | `backend/app/grounding.py` | Checks a brief against the judgment. Drops any claim that cites no paragraph, misquotes, or names a case or citation that isn't in the paragraphs it cites. Flags cases that aren't in our table yet. |
 | `backend/app/pipeline.py` | Query → resolution → verification. The source store is the only part that will talk to case-law sources. |
 | `backend/app/main.py` | FastAPI: `/api/citations/parse`, `/api/resolve`, `/api/lookup`. |
@@ -78,23 +80,47 @@ The brief may always name the judgment being briefed. Whether a paragraph suppor
 
 ## The splitter on real judgments
 
-The splitter has been tuned on fourteen Digital SCR judgments: three scanned reports from 1950 to 1962, five from the typed volumes of 1978 to 2015, and six from 2022 to 2024. Five have separate opinions (Romesh Thappar's dissent, three split benches from 2022 and 2023, and a concurrence in Arvind Kejriwal v. CBI). The others include an order of the Court with no author, a first page that opens with the end of the previous case, footnotes, and sub-paragraphs numbered "3.1.". `tests/test_scr.py` checks each one's authors, paragraph count, numbering, footnotes and boundaries.
+The splitter has been tuned on 25 real judgments from 1950 to 2026, in three layouts:
 
-Neither `www.sci.gov.in` nor `digiscr.sci.gov.in` was reachable from the build environment (its network policy blocks both), so the PDFs came from the [AWS Open Data mirror](https://indian-supreme-court-judgments.s3.amazonaws.com) of Digital SCR. That's fine for test fixtures, but the mirror is a copy: it can't be a verification source.
+- **Fourteen Digital SCR reports** (`tests/fixtures/scr`, `tests/test_scr.py`): three scanned reports from 1950 to 1962, five from the typed volumes of 1978 to 2015, and six from 2022 to 2024. Five have separate opinions (Romesh Thappar's dissent, three split benches from 2022 and 2023, and a concurrence in Arvind Kejriwal v. CBI). The others include an order of the Court with no author, a first page that opens with the end of the previous case, footnotes, and sub-paragraphs numbered "3.1.".
+- **Six JUDIS texts from the SC website** (`tests/fixtures/sci`, `tests/test_sci.py`): judgments of 1950 to 2006 as the website's archive holds them, the SCR report's text keyed in, with the headnotes in front. Three have separate opinions: N.B. Khare (five opinions, two dissenting), CIT v. E.D. Sheppard (a dissent and then the bench's order) and Ghulam Sarwar (a concurrence).
+- **Five signed judgments from the SC website**, 2010 to 2026: the layout with "J U D G M E N T", signature blocks, "Signature Not Verified" and "New Delhi;" and the date. They include Harish Rana v. Union of India (2026, 338 pages, with a concurrence), an order with no author, and two with the court master's Record of Proceedings appended.
 
-What tuning found:
+The tests check each judgment's authors, paragraph count, numbering, footnotes and boundaries, and that no page furniture is left in the text. Every expected value was checked by reading the output against the PDF's text.
 
-- **The reporter's material wraps the judgment.** Headnotes can say "Per FAZL ALI J.—...", which the splitter would read as an opinion. `scr.clean_scr` finds where the judgment starts ("The Judgment of the Court was delivered by", "JUDGMENT / ORDER OF THE SUPREME COURT") and ends (the editor's "Appeal dismissed.", agents, "Headnotes prepared by").
-- **Paragraphs are marked by indentation, not blank lines,** and margin notes can only be told from text by position. So extraction must use `pdftotext -layout`; plain extraction loses both.
-- **Author lines vary more than expected:** "MAHAJAN J.-This" (no comma, hyphen), "CHANDRACHUD, C. J. The petitioners" (no dash), and in current volumes a name alone on its line, sometimes straight after a page break. Numbering also appears as "1 The order" (no dot) and "22 .The" (a typo).
-- **Separate opinions restart their numbering, and the first paragraph is often printed without its number** (both opinions in Kejriwal, the dissent in Gangadhar Nayak). The splitter reports this as "numbering starts at 2", which is what the page shows; the paragraph still gets our own number.
-- **Scanned reports (before about 1970) are OCR text with errors:** "AYYA:XGAR, J." for Ayyangar J., "FAZL Au J." for Fazl Ali J., "beforo" for "before". Author names from these need checking against the bench, and the brief checker's word-for-word quote test will fail on garbled words. Scanned judgments need a cleaner text source (or re-OCR) before briefs are written from them.
-- **Words split across lines need the judgment as a dictionary.** The fourteen samples have 269 hyphens at line ends, mostly syllable breaks ("Govern-ment") with some compounds ("non-cognizable", "examination-in-chief"). The splitter checks which form the same judgment uses elsewhere. With no evidence, it keeps the hyphen after a prefix like "non-", before a capital, or between two words the judgment uses alone ("subject-matter"). About six still come out wrong, mostly in garbled scans ("certiorariwould"), plus "reinvestigation" and "subclause" where the judgment never uses the word mid-line.
-- **Still not handled:** footnote reference numbers stay in the text ("Maharashtra 1."); tables come out as fragments; margin letters next to capitalised words ("A It may be") are kept.
-- **The mirror's metadata is unreliable:** Romesh Thappar lists only Kania C.J. as the bench (six judges sat, and Patanjali Sastri J. wrote the judgment).
-- **Size, for the cost estimate:** judgment text runs about 300 words, or roughly 450 tokens, per SCR page (characters ÷ 4; the API's token counter gives exact figures). The fourteen samples are 6 to 41 pages; their judgments are 1,800 to 12,400 words.
+### Where the PDFs come from
 
-None of the samples is a judgment PDF from the SC website itself, which has a different layout (signature blocks, "J U D G M E N T"). The splitter's tests for that layout are still synthetic.
+`www.sci.gov.in` is reachable from the build environment now. `digiscr.sci.gov.in` and `main.sci.gov.in` are not, because they no longer exist: public DNS has no record of either. Digital SCR moved to [`scr.sci.gov.in/scrsearch`](https://scr.sci.gov.in/scrsearch/).
+
+The SC website's judgment searches and Digital SCR's search all need a CAPTCHA, and we did not get around it. The 2026 judgments come from the home page's "Latest Judgments" list and the "Landmark Judgment Summaries" page. The older ones come from the archive the old site's search linked to (`api.sci.gov.in/jonew/judis/<n>.pdf`), found by trying numbers one at a time. `sources.yaml` gives each one's URL, citations and why it was chosen, and `scripts/fetch_sci_samples.py` downloads them again, one at a time with a pause. The site's copyright policy allows reproduction with the source acknowledged.
+
+The Digital SCR reports still come from the [AWS Open Data mirror](https://indian-supreme-court-judgments.s3.amazonaws.com). That's fine for test fixtures, but the mirror is a copy: it can't be a verification source.
+
+**We have not compared the mirror's PDFs with the official ones.** `scr.sci.gov.in` shows a report's PDF only after a search behind a CAPTCHA. `scripts/compare_scr_copies.py` compares PDFs downloaded by hand with the mirror's copies. What could be checked is the mirror's metadata, against the SC website's own records for the six judgments in both. The decision dates and SCR citations agree. But for four of the six, the mirror's bench lists one judge: for example, S.K. Das J. alone for Sheppard, where four judges sat.
+
+### What tuning found
+
+- **The reporter's material wraps the judgment.** Headnotes can say "Per FAZL ALI J.—...", which the splitter would read as an opinion. `scr.clean_scr` and `sci.clean_sci` find where the judgment starts ("The Judgment of the Court was delivered by", "JUDGMENT / ORDER OF THE SUPREME COURT", the first author line) and ends (the editor's "Appeal dismissed.", initials and agents; on the website, the Record of Proceedings).
+- **Blank lines don't mark paragraphs.** SCR marks them by indentation. JUDIS text is flush left, so a paragraph ends where a line falls short. Signed judgments are often double-spaced, but their cover pages and appended orders are not, so the cleaner measures the spacing page by page. Extraction must use `pdftotext -layout`: plain extraction loses indentation and margins.
+- **Page furniture differs by layout:** SCR has running heads, margin letters and marginal notes. JUDIS has its own page head and the SCR page numbers, with that page's footnotes just above them. Signed judgments have "Page 3 of 22", a running line with the case number, tables of contents, and a cover page before a separate opinion. The 2026 judgments also carry the "Signature Not Verified" stamp, printed in the margin on the same lines as the text; the 2010 and 2016 ones don't.
+- **JUDIS texts from the 1980s were cut at a fixed width.** The end of each long line is printed at the start of the next ("ha" / "ve"). The cleaner rejoins them using the judgment's own words: "have" occurs in it, so "ha" + "ve" is one word, while "heard" + "on" stays two.
+- **Author lines vary more than expected:** "MAHAJAN J.-This" (no comma, hyphen), "CHANDRACHUD, C. J. The petitioners" (no dash), a name alone on its line, and in JUDIS "Subba Rao, C.J. This petition" in title case. The splitter only trusts the title-case form when the reporter's preamble names that judge as delivering a judgment, because "Krishna Iyer, J. The view ..." is usually a citation. Numbering also appears as "1 The order" (no dot) and "22 .The" (a typo). After a split decision comes "By COURT : In view of the majority judgment ...", an opinion with no author.
+- **Numbers and names that aren't what they look like:**
+  - A judgment that quotes sections 18 and 22 of an Act looks as if it jumps from paragraph 13 to 18. The splitter now accepts a jump only if the number it expects doesn't turn up further on.
+  - Harish Rana quotes earlier judges under their names ("A.K. Sikri, J."), which look like author lines. A name followed by a quotation, or by a paragraph number too high to start an opinion, is a quotation's heading.
+  - A list numbered "1." and "2." near the end of an unnumbered judgment isn't paragraph numbering.
+- **Headings are paragraphs of their own.** "BRIEF FACTS", "(A). FACTUAL MATRIX" and "(h) Best interest of the patient in India" used to be glued to the end of the paragraph before. A heading counts as one only when the next paragraph number follows it, so quoted capitals such as "DIAGNOSIS: GAUZE PIECES ..." stay where they are. This added four heading paragraphs to each of two SCR samples. It also exposed a running head that `clean_scr` had left inside a paragraph of the 2015 sample; that is now removed.
+- **Separate opinions restart their numbering, and the first paragraph is often printed without its number** (both opinions in Kejriwal, the dissent in Gangadhar Nayak, "Leave granted." in a 2026 order). The splitter reports this as "numbering starts at 2", which is what the page shows; the paragraph still gets our own number. Footnote numbers restart in a separate opinion too.
+- **Scanned reports (before about 1970) are OCR text with errors:** "AYYA:XGAR, J." for Ayyangar J., "FAZL Au J." for Fazl Ali J., "beforo" for "before". The brief checker's word-for-word quote test will fail on garbled words.
+  - **JUDIS text is much cleaner than this OCR.** N.B. Khare (1950) is in both the mirror and JUDIS. Each text has about 3,760 words of three letters or more. 93 distinct words appear only in the SCR scan's text, nearly all garbled ("argiied", "restnct", "whicl"). Only 30 appear only in JUDIS, mostly real words the OCR mangled, with a few typos ("consitution", "grouuds").
+  - The SCR scan of N.B. Khare also yields only three of its five opinions: the splitter misses Patanjali Sastri J.'s and Fazl Ali J.'s one-line "I agree.", which is printed beside a margin note. JUDIS gives all five.
+- **Words split across lines need the judgment as a dictionary.** The fourteen SCR samples have 269 hyphens at line ends, mostly syllable breaks ("Govern-ment") with some compounds ("non-cognizable", "examination-in-chief"). The splitter checks which form the same judgment uses elsewhere. With no evidence, it keeps the hyphen after a prefix like "non-", before a capital, or between two words the judgment uses alone ("subject-matter"). About six still come out wrong, mostly in garbled scans ("certiorariwould"), plus "reinvestigation" and "subclause" where the judgment never uses the word mid-line.
+- **Still not handled:**
+  - Footnote reference numbers stay in the text ("Act, 20041", "respondent No. 710").
+  - Tables come out as fragments, and margin letters next to capitalised words ("A It may be") are kept.
+  - In 1980s JUDIS text, justification spaces survive inside a date ("28.2. 1989"), and a cut name in the counsel list stays split ("Bhattachary a").
+  - An epigraph printed as verse comes out as two paragraphs.
+- **Size, for the cost estimate:** judgment text runs about 300 words, or roughly 450 tokens, per SCR page (characters ÷ 4; the API's token counter gives exact figures). Signed judgments use large type and are often double-spaced: 150 to 250 words a page. So page counts overstate them: Harish Rana's 338 pages are 85,000 words, about 132,000 tokens. The SCR samples' judgments are 1,800 to 12,400 words; the website's run from 750 to 85,000.
 
 ## Running it
 
@@ -105,7 +131,9 @@ pip install -e ".[dev]"
 
 pytest                       # unit tests (schema tests run when DATABASE_URL is set)
 python -m evals.run          # release gates
-python scripts/fetch_scr_samples.py   # download the sample judgments again (needs pdftotext)
+python scripts/fetch_scr_samples.py   # download the Digital SCR samples again (needs pdftotext)
+python scripts/fetch_sci_samples.py   # download the SC website samples again
+python scripts/compare_scr_copies.py 1950_1_594_605=~/Downloads/romesh.pdf   # official copy vs mirror
 uvicorn app.main:app --reload
 # http://localhost:8000/api/lookup?q=Shah%20Bano
 ```
@@ -121,9 +149,10 @@ DATABASE_URL=... pytest tests/test_schema.py
 
 - Check the seed entries against official sources, and grow the alias table to the 500 most-cited cases.
 - Grow `evals/queries.yaml` toward the 150–200 labelled cases, and add every user error report.
-- Take the splitter's test set from 14 to 50 judgments, and add judgment PDFs from the SC website, once `www.sci.gov.in` and `digiscr.sci.gov.in` are allowed in the environment's network settings. Include a bench with three or more opinions.
-- Find a better text source for scanned judgments (before about 1970), or re-OCR them, before writing briefs from them.
+- Compare two or three official Digital SCR PDFs with the mirror's copies. Download them by hand from `scr.sci.gov.in` (its search needs a CAPTCHA) and run `scripts/compare_scr_copies.py`.
+- Take the splitter's test set from 25 to 50 judgments. Include more split benches in the signed layout: Harish Rana is the only one so far, because the website's search needs a CAPTCHA and the open lists rarely have them.
+- Use JUDIS text rather than OCR of the SCR scans for judgments before about 2000. Keep the SCR page numbers, which JUDIS prints, so references can still be given by SCR page.
 - Build the brief writer (Claude API) to produce claims in the `grounding.Claim` shape, and put every brief through `check_brief`.
-- Build the first source adapter (the SC website or Digital SCR) behind `SourceStore`, once its terms are confirmed.
+- Build the first source adapter (the SC website or Digital SCR) behind `SourceStore`. Both put search behind a CAPTCHA, so the adapter needs an agreed route (an API or bulk data from the Registry or NIC), not scraping.
 - Move the alias table into Postgres and resolve with `pg_trgm`. The Python matcher uses the same similarity measure, so results should line up.
 - Add a curated list of known overrulings (Golak Nath, ADM Jabalpur, Koushal) to measure citator recall when Phase 4 starts.

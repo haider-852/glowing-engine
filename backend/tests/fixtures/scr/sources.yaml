@@ -4,13 +4,15 @@
 # lay the text out differently, so run tests/test_scr.py after re-extracting.
 #
 # The PDFs come from the AWS Open Data bucket `indian-supreme-court-judgments`,
-# a mirror of the PDFs on digiscr.sci.gov.in. It is a copy, not an official
-# source: these files are test fixtures, never evidence for verification.
+# a mirror of Digital SCR (scr.sci.gov.in, once digiscr.sci.gov.in). It is a
+# copy, not an official source: these files are test fixtures, never evidence
+# for verification. `scripts/compare_scr_copies.py` compares them with
+# official copies downloaded by hand.
 #
 # The metadata below is the mirror's, unchecked. Two of its fields are already
-# known to be unreliable: `bench_listed` is sometimes only the presiding judge
-# (Romesh Thappar lists Kania C.J. alone; six judges sat), and decision dates
-# can fall in the year before the SCR volume.
+# known to be unreliable: `bench_listed` is often only the presiding judge or
+# the author (Romesh Thappar lists Kania C.J. alone; six judges sat), and
+# decision dates can fall in the year before the SCR volume.
 
 source: https://indian-supreme-court-judgments.s3.amazonaws.com
 judgments:

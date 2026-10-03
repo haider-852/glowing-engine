@@ -1,0 +1,113 @@
+# Judgment PDFs from the Supreme Court of India's website, extracted with
+# `pdftotext -layout` (poppler 24.02). `scripts/fetch_sci_samples.py`
+# re-downloads them and rewrites the .txt files; another poppler version may
+# lay the text out differently, so run tests/test_sci.py after re-extracting.
+#
+# Source: Supreme Court of India, www.sci.gov.in. The site's copyright policy
+# allows reproduction with the source acknowledged; these files are test
+# fixtures, not a redistribution of the judgments.
+#
+# Two kinds of PDF, both linked from the website:
+# * judis: https://api.sci.gov.in/jonew/judis/<n>.pdf, the archive the old
+#   site's judgment search linked to. Up to about 2009 these are JUDIS text
+#   (the SCR report's text, keyed in); from about 2010 the signed judgment.
+# * signed: https://www.sci.gov.in/sci-get-pdf/?diary_no=<diary number and
+#   year>&type=j&order_date=<date>&from=latest_judgements_order, the link
+#   behind "View Judgment" on www.sci.gov.in. Without `from` the site answers
+#   with an HTML page ("Invalid details").
+#
+# The site's search forms need a CAPTCHA, so these were found without them:
+# the 2026 judgments from the home page's "Latest Judgments" list and the
+# "Landmark Judgment Summaries" page, the older ones by trying JUDIS numbers.
+# Neutral citations and SCR citations for the older ones come from the Digital
+# SCR mirror's metadata (see ../scr/sources.yaml), matched on title and date.
+
+judgments:
+  - id: judis_900
+    url: https://api.sci.gov.in/jonew/judis/900.pdf
+    title: Suraj Mall Mohta and Co. v. A.V. Visvanatha Sastri
+    citation: "[1955] 1 S.C.R. 448"
+    neutral: 1954 INSC 78
+    decided: "1954-05-28"
+    bench: Mahajan C.J., S.R. Das, Bose, Bhagwati and Venkatarama Aiyar JJ.
+    why: "JUDIS text of a 1954 Constitution Bench: \"MEHR CHAND MAHAJAN C.J.-The\" with no comma; statutory text quoted at length; \"Writ issued,\" as the disposal."
+  - id: judis_1248
+    url: https://api.sci.gov.in/jonew/judis/1248.pdf
+    title: Dr. N.B. Khare v. State of Delhi
+    citation: "[1950] 1 S.C.R. 519"
+    neutral: 1950 INSC 17
+    decided: "1950-05-26"
+    bench: Kania C.J., Fazl Ali, Patanjali Sastri, Mahajan and Mukherjea JJ.
+    why: "Five opinions in JUDIS text: Kania C.J., \"FAZL ALI J.--I agree.\", Patanjali Sastri J., and Mahajan and Mukherjea JJ. dissenting. Also in the Digital SCR mirror (1950_1_519_536), so JUDIS text can be compared with OCR of the scan."
+  - id: judis_3650
+    url: https://api.sci.gov.in/jonew/judis/3650.pdf
+    title: Commissioner of Income-tax, Bombay v. E.D. Sheppard
+    citation: "[1964] 1 S.C.R. 163"
+    neutral: 1962 INSC 379
+    decided: "1962-12-12"
+    bench: S.K. Das, Kapur, Sarkar and Raghubar Dayal JJ.
+    why: "Split bench in JUDIS text: S.K. Das J. for three judges, a dissent by Raghubar Dayal J., then \"By COURT : In view of the majority judgment ...\"; footnotes above the SCR page numbers."
+  - id: judis_2500
+    url: https://api.sci.gov.in/jonew/judis/2500.pdf
+    title: Ghulam Sarwar v. Union of India
+    citation: "[1967] 2 S.C.R. 271"
+    neutral: 1966 INSC 265
+    decided: "1966-12-15"
+    bench: Subba Rao C.J., Hidayatullah, Sikri, Bachawat and Shelat JJ.
+    why: "Separate opinion: Subba Rao C.J. for four judges and a concurrence by Bachawat J.; both author lines in title case with no dash (\"Subba Rao, C.J. This petition ...\")."
+  - id: judis_8000
+    url: https://api.sci.gov.in/jonew/judis/8000.pdf
+    title: Supreme Court Legal Aid Committee v. Union of India
+    citation: "[1989] 2 S.C.R. 60"
+    neutral: 1989 INSC 95
+    decided: "1989-03-17"
+    bench: Ranganath Misra and Venkatachaliah JJ.
+    why: "1980s JUDIS text cut at a fixed width, the end of each long line printed at the start of the next (\"ha\" / \"ve\"); an order of the Court with no author."
+  - id: judis_28000
+    url: https://api.sci.gov.in/jonew/judis/28000.pdf
+    title: State of West Bengal v. Haresh C. Banerjee
+    citation: "[2006] Supp. 5 S.C.R. 620"
+    neutral: 2006 INSC 566
+    decided: "2006-08-30"
+    bench: Y.K. Sabharwal C.J.I., C.K. Thakker and P.K. Balasubramanyan JJ.
+    why: "2000s JUDIS text: no headnotes, \"J U D G M E N T\", \"Y.K. Sabharwal, CJI.\", and dashes printed as the escapes \\027 and \\026."
+  - id: judis_37000
+    url: https://api.sci.gov.in/jonew/judis/37000.pdf
+    title: Dr. V.N. Shrikhande v. Anita Sena Fernandes
+    citation: null  # non-reportable; not in Digital SCR
+    neutral: null
+    decided: "2010-10-20"
+    bench: G.S. Singhvi and Asok Kumar Ganguly JJ.
+    why: "Signed 2010 judgment, double-spaced; quotes sections 18 and 22 of the Consumer Protection Act, which look like paragraphs 18 and 22; signatures printed with \"…\"; \"[G.S. Singhvi]\"."
+  - id: judis_43500
+    url: https://api.sci.gov.in/jonew/judis/43500.pdf
+    title: Dattatraya Baburao Walawalkar v. Siddhivinayak Construction Pvt. Ltd.
+    citation: "[2016] 2 S.C.R. 905"
+    neutral: 2016 INSC 263
+    decided: "2016-03-15"
+    bench: Kurian Joseph and R.F. Nariman JJ.
+    why: "Signed 2016 judgment: single-spaced cover page, double-spaced text, a table, \"New Delhi, March 15, 2016\", and the court master's Record of Proceedings appended."
+  - id: sci_425932026_2026-09-29
+    url: https://www.sci.gov.in/sci-get-pdf/?diary_no=425932026&type=j&order_date=2026-09-29&from=latest_judgements_order
+    title: Saurabh Bajaj v. State of Chhattisgarh
+    citation: null
+    neutral: 2026 INSC 1076
+    decided: "2026-09-29"
+    bench: J.B. Pardiwala and K. Vinod Chandran JJ.
+    why: "Current layout: an order with no author whose first paragraph is unnumbered; the \"Signature Not Verified\" stamp shares lines with the text; \"Page 1 of 5\" and the case number on every page; a footnote."
+  - id: sci_541182026_2026-09-28
+    url: https://www.sci.gov.in/sci-get-pdf/?diary_no=541182026&type=j&order_date=2026-09-28&from=latest_judgements_order
+    title: State of Maharashtra v. Ramesh Sukrya Mhatre
+    citation: null
+    neutral: 2026 INSC 1075
+    decided: "2026-09-28"
+    bench: Vikram Nath and Sandeep Mehta JJ.
+    why: "Current layout: \"Mehta, J.\" under ORDER, section headings in capitals, 15 footnotes, \"NEW DELHI; / SEPTEMBER 28, 2026.\" with a footnote after it, and the Record of Proceedings appended."
+  - id: sci_609802025_2026-03-11
+    url: https://www.sci.gov.in/sci-get-pdf/?diary_no=609802025&type=j&order_date=2026-03-11&from=latest_judgements_order
+    title: Harish Rana v. Union of India
+    citation: null
+    neutral: 2026 INSC 222
+    decided: "2026-03-11"
+    bench: J.B. Pardiwala and K.V. Viswanathan JJ.
+    why: "Separate opinion in the current layout (338 pages): J.B. Pardiwala J. and a concurrence by K.V. Viswanathan J. on its own cover page; tables of contents; judges' names quoted as headings (\"A.K. Sikri, J.\"); footnotes numbered afresh in the concurrence."
