@@ -158,3 +158,155 @@ def test_sentence_ending_in_judge_name_is_not_an_author_line():
     assert [p.court_number for p in j.paragraphs] == ["1", "2"]
     assert j.paragraph(1).text.endswith("by Krishna Iyer, J.")
     assert j.warnings == []
+
+
+def test_scanned_report_author_lines():
+    # Scanned reports print a hyphen for the dash and often drop the comma;
+    # later reports drop the dash too.
+    text = (
+        "MAHAJAN J.-This is an appeal.\n\nIt fails.\n\n"
+        "FAZL ALI J.-I dissent.\n\n"
+        "CHANDRACHUD, C. J. The petitioners are members of a scheduled caste.\n\n"
+        "DR. ANAND, J. This appeal is allowed.\n"
+    )
+    j = split_judgment(text)
+    assert [o.authors for o in j.opinions] == [["MAHAJAN"], ["FAZL ALI"], ["CHANDRACHUD"], ["DR. ANAND"]]
+    assert [p.text for p in j.paragraphs][2:] == [
+        "I dissent.",
+        "The petitioners are members of a scheduled caste.",
+        "This appeal is allowed.",
+    ]
+
+
+def test_no_dash_author_line_needs_capitals():
+    # "Krishna Iyer, J. The ..." in running text is a citation, not an opinion.
+    text = "JUDGMENT\n\n1. We agree.\n\nKrishna Iyer, J. The view was approved.\n"
+    j = split_judgment(text)
+    assert len(j.opinions) == 1
+
+
+def test_order_passed_marker():
+    j = split_judgment("The following Order of the Court was passed:\n\nThe applications are disposed of.\n")
+    assert len(j.opinions) == 1
+    assert j.paragraph(1).text == "The applications are disposed of."
+    assert not any("No judgment heading" in w for w in j.warnings)
+
+
+def test_numbers_without_dots():
+    # Some judgments number paragraphs "1 The order ...". A wrapped line that
+    # starts with the next number is not a paragraph.
+    text = "ORDER\n\n1 The order of this Court sets out the background under Section\n2 of the Act.\n\n2 We agree.\n"
+    j = split_judgment(text)
+    assert [p.court_number for p in j.paragraphs] == ["1", "2"]
+    assert j.paragraph(1).text.endswith("Section 2 of the Act.")
+
+
+def test_numbering_typos_and_lone_numbers():
+    # "22 .The" is a typo in a 2023 order; plain pdftotext puts "1." alone on its line.
+    text = "ORDER\n\n1.\n\nLeave granted.\n\n2 .The appeal is allowed.\n"
+    j = split_judgment(text)
+    assert [(p.court_number, p.text) for p in j.paragraphs] == [
+        ("1", "Leave granted."),
+        ("2", "The appeal is allowed."),
+    ]
+
+
+def test_line_break_hyphens_use_the_judgment_as_evidence():
+    # "Govern- ment" is a line break: "Government" appears elsewhere. "Cross-
+    # examination" keeps its hyphen for the same reason.
+    text = (
+        "JUDGMENT\n\n1. The Government replied. The cross-examination was brief. The Govern-\n"
+        "ment relied on the cross-\nexamination of the witness.\n"
+    )
+    assert (
+        split_judgment(text)
+        .paragraph(1)
+        .text.endswith("The Government relied on the cross-examination of the witness.")
+    )
+
+
+def test_line_break_hyphens_without_evidence():
+    text = (
+        "JUDGMENT\n\n1. The matter contri-\nbuted to the delay. The subject-\nmatter of the suit, the "
+        "Munsif-\nMagistrate, the case-by-\ncase approach and the non-\ncognizable offence were "
+        "threaten-\ning nobody. Not one matter of subject was raised.\n"
+    )
+    para = split_judgment(text).paragraph(1).text
+    for expected in (
+        "contributed",  # no evidence, not a compound: a syllable break
+        "subject-matter",  # both halves are words the judgment uses
+        "Munsif-Magistrate",  # a capital after the break
+        "case-by-case",  # a link in a compound chain
+        "non-cognizable",  # a compound prefix
+        "threatening",  # a suffix
+    ):
+        assert expected in para, expected
+
+
+def test_signature_blocks_as_the_website_prints_them():
+    # Ellipsis characters, a mixed-case name, and "11th March, 2026".
+    text = (
+        "JUDGMENT\n\n1. The appeal is allowed.\n\n….……………………J.\n(J.B. Pardiwala)\n\n"
+        "....................................... J.\n[K. V. VISWANATHAN]\n\nNew Delhi;\n11th March, 2026.\n"
+    )
+    j = split_judgment(text)
+    assert [p.text for p in j.paragraphs] == ["The appeal is allowed."]
+
+
+def test_order_of_the_court_after_a_split_decision():
+    text = (
+        "SINHA, J.—The appeal fails.\n\nDAYAL, J.—I dissent.\n\n"
+        "By COURT : In view of the majority judgment the appeal is dismissed.\n"
+    )
+    j = split_judgment(text)
+    assert [o.authors for o in j.opinions] == [["SINHA"], ["DAYAL"], []]
+    assert j.paragraphs[-1].text == "In view of the majority judgment the appeal is dismissed."
+
+
+def test_judge_quoted_by_name_is_not_a_new_opinion():
+    # A name heading a quotation, whether the quotation opens with a quote
+    # mark or with the quoted judgment's own paragraph number.
+    text = (
+        "JUDGMENT\n\nA.B. RAO, J.\n\n1. Counsel relied on two passages:\n\nA.K. Sikri, J.\n\n"
+        "“219. Passive euthanasia occurs when treatment is withdrawn.”\n\nDr. D.Y. Chandrachud, J.\n\n"
+        "333. I am also of the view that the directive is valid.\n\n2. We agree.\n"
+    )
+    j = split_judgment(text)
+    assert [o.authors for o in j.opinions] == [["A.B. RAO"]]
+    assert [p.court_number for p in j.paragraphs] == ["1", "2"]
+
+
+def test_quoted_section_numbers_do_not_skip_the_numbering():
+    # "5." and "7." are sections of the Act quoted in paragraph 3; the
+    # judgment's own paragraph 4 follows the quotation.
+    text = (
+        "JUDGMENT\n\n1. Leave granted.\n\n2. The facts are brief.\n\n3. The relevant sections read:\n\n"
+        "5. Procedure applicable to State Commissions.\n\n7. Power and procedure of the National Commission.\n\n"
+        "4. A reading of these provisions is clear.\n"
+    )
+    j = split_judgment(text)
+    assert [p.court_number for p in j.paragraphs] == ["1", "2", "3", "4"]
+    assert "7. Power and procedure" in j.paragraph(3).text
+    assert j.warnings == []
+
+
+def test_headings_end_the_paragraph_before_them():
+    text = (
+        "JUDGMENT\n\n1. Leave granted.\n\nBRIEF FACTS\n\n2. The facts are these.\n\n(a) The first fact\n\n"
+        "3. The second.\n\nDIAGNOSIS: GAUZE PIECES WITHIN A MASS\n\nThe report ends here.\n\n4. The last.\n"
+    )
+    j = split_judgment(text)
+    assert [(p.court_number, p.text) for p in j.paragraphs[:5]] == [
+        ("1", "Leave granted."),
+        (None, "BRIEF FACTS"),
+        ("2", "The facts are these."),
+        (None, "(a) The first fact"),
+        ("3", "The second.\n\nDIAGNOSIS: GAUZE PIECES WITHIN A MASS\n\nThe report ends here."),
+    ]
+
+
+def test_a_list_late_in_an_unnumbered_judgment_is_not_numbering():
+    paras = "\n\n".join(f"Paragraph {n} of the judgment." for n in range(1, 8))
+    text = f"MAHAJAN J.-{paras}\n\n1. Under section 8 the findings are final.\n\n2. Under section 34 they are not.\n"
+    j = split_judgment(text)
+    assert all(p.court_number is None for p in j.paragraphs)

@@ -1,0 +1,116 @@
+# Sample judgments for tuning the splitter: Digital SCR PDFs, extracted with
+# `pdftotext -layout` (poppler 24.02). `scripts/fetch_scr_samples.py`
+# re-downloads them and rewrites the .txt files; another poppler version may
+# lay the text out differently, so run tests/test_scr.py after re-extracting.
+#
+# The PDFs come from the AWS Open Data bucket `indian-supreme-court-judgments`,
+# a mirror of Digital SCR (scr.sci.gov.in, once digiscr.sci.gov.in). It is a
+# copy, not an official source: these files are test fixtures, never evidence
+# for verification. `scripts/compare_scr_copies.py` compares them with
+# official copies downloaded by hand.
+#
+# The metadata below is the mirror's, unchecked. Two of its fields are already
+# known to be unreliable: `bench_listed` is often only the presiding judge or
+# the author (Romesh Thappar lists Kania C.J. alone; six judges sat), and
+# decision dates can fall in the year before the SCR volume.
+
+source: https://indian-supreme-court-judgments.s3.amazonaws.com
+judgments:
+  - id: "1950_1_594_605"
+    year: "1950"
+    title: Romesh Thappar v. The State of Madras
+    citation: "[1950] 1 S.C.R. 594"
+    neutral: 1950 INSC 14
+    decided: "1950-05-26"
+    why: Scanned 1950 report; majority by Patanjali Sastri J. and a dissent by Fazl Ali J.; ends with the start of the next case.
+  - id: "1951_1_266_276"
+    year: "1951"
+    title: Fatma Haji Ali Mohammad Haji v. The State of Bombay
+    citation: "[1951] 1 S.C.R. 266"
+    neutral: 1951 INSC 12
+    decided: "1951-03-02"
+    why: Scanned 1951 report; first page opens with the end of the previous case; marginal notes on every page.
+  - id: "S_1962_3_369_385"
+    year: "1962"
+    title: Kameshwar Prasad v. The State of Bihar
+    citation: "[1962] Supp. 3 S.C.R. 369"
+    neutral: 1962 INSC 67
+    decided: "1962-02-22"
+    why: Scanned Constitution Bench report with heavy OCR noise and long quotations.
+  - id: "1978_3_963_970"
+    year: "1978"
+    title: Ram Rattan v. Bajrang Lal
+    citation: "[1978] 3 S.C.R. 963"
+    neutral: 1978 INSC 108
+    decided: "1978-05-05"
+    why: 1970s layout with A-H margin letters and a running head naming the author.
+  - id: "1985_1_564_578"
+    year: "1985"
+    title: Prem Prakash v. Union of India
+    citation: "[1985] 1 S.C.R. 564"
+    neutral: 1984 INSC 150
+    decided: "1984-08-22"
+    why: Author line with no dash ("CHANDRACHUD, C. J. The petitioners ...").
+  - id: "S_1994_6_171_179"
+    year: "1994"
+    title: Shivappa v. State of Karnataka
+    citation: "[1994] Supp. 6 S.C.R. 171"
+    neutral: 1994 INSC 562
+    decided: "1994-11-29"
+    why: Typed 1990s report; "DR. ANAND, J." author line; running head in the middle of the delivered-by line.
+  - id: "2005_3_1204_1209"
+    year: "2005"
+    title: Arvind Mohan Johari v. State of U.P.
+    citation: "[2005] 3 S.C.R. 1204"
+    neutral: 2005 INSC 254
+    decided: "2005-05-04"
+    why: Order of the Court with no author and no paragraph numbers.
+  - id: "2015_14_975_984"
+    year: "2015"
+    title: Supreme Court Advocates-on-Record Association v. Union of India
+    citation: "[2015] 14 S.C.R. 975"
+    neutral: 2015 INSC 285
+    decided: "2015-12-16"
+    why: Five-judge order with numbered paragraphs and margin letters in front of paragraph numbers.
+  - id: "2022_2_925_960"
+    year: "2022"
+    title: Gangadhar Narayan Nayak v. State of Karnataka
+    citation: "[2022] 2 S.C.R. 925"
+    neutral: 2022 INSC 318
+    decided: "2022-03-21"
+    why: "Split bench: Indira Banerjee J. and a dissent by J.K. Maheshwari J. (first paragraph unnumbered), then the bench's order referring the case."
+  - id: "2023_4_916_938"
+    year: "2023"
+    title: Yamal Manojbhai v. Union of India
+    citation: "[2023] 4 S.C.R. 916"
+    neutral: 2023 INSC 498
+    decided: "2023-05-04"
+    why: Split bench, 2023 typed layout; "The Judgments* of the Court"; a first-page head printed as "[2023]REPORTS".
+  - id: "2023_8_828_856"
+    year: "2023"
+    title: K.B. Tea Product v. Commercial Tax Officer, Siliguri
+    citation: "[2023] 8 S.C.R. 828"
+    neutral: 2023 INSC 530
+    decided: "2023-05-12"
+    why: "Split bench: M.R. Shah J. and a dissent by Krishna Murari J.; sub-paragraphs \"2.1\"; disposal \"Matters to be placed before Hon'ble CJI.\""
+  - id: "2023_12_370_380"
+    year: "2023"
+    title: People's Union for Civil Liberties v. State of Maharashtra
+    citation: "[2023] 12 S.C.R. 370"
+    neutral: 2023 INSC 833
+    decided: "2023-09-13"
+    why: Current Digital SCR layout; footnotes; two-line running head; a "22 .The" numbering typo.
+  - id: "2024_2_685_692"
+    year: "2024"
+    title: N. Manogar v. The Inspector of Police
+    citation: "[2024] 2 S.C.R. 685"
+    neutral: 2024 INSC 130
+    decided: "2024-02-16"
+    why: Current Digital SCR layout; hanging paragraph numbers and "3.1." sub-paragraphs.
+  - id: "2024_9_683_723"
+    year: "2024"
+    title: Arvind Kejriwal v. Central Bureau of Investigation
+    citation: "[2024] 9 S.C.R. 683"
+    neutral: 2024 INSC 687
+    decided: "2024-09-13"
+    why: Current layout with two opinions (Surya Kant J., Ujjal Bhuyan J. concurring); the second author line follows a page break; footnotes.
